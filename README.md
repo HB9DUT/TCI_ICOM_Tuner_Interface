@@ -244,6 +244,17 @@ The application logic runs in a single main loop. The WebSocket client passes it
 - K9EQ: [Inside the Icom AH-4 Tuner](https://www.hamoperator.com/HF/AH-4_Design_and_Operation.pdf) (sequence, levels, failure signal)
 - K9EQ: [AH-4 Universal Interface](https://www.hamoperator.com/Hamoperator/AH-4_Universal_Interface_files/ah4-manual-5.pdf)
 
+## Disclaimer
+
+This project is provided "as is", without warranty of any kind. Building and using it is entirely at your own risk.
+
+- **You are responsible for your station.** The interface keys a transmitter via ExpertSDR3. Make sure your setup, tune power and antenna are suitable, and that you operate within the terms of your amateur radio licence and local regulations.
+- **Check the hardware yourself.** The interface circuit is connected to a 13.8 V supply, a tuner and RF equipment. Wiring errors can damage the ESP32, the tuner, the radio or the power supply. Verify the circuit, the pinout of your tuner and all levels before connecting anything.
+- **No guarantee of correct function.** Timeouts and checks reduce the risk of an unattended carrier or a bad match, but they cannot rule out software or hardware faults. Do not leave the station unattended while tuning.
+- The author accepts no liability for damage to equipment, injury, interference or any other consequences arising from the use of this project.
+
+ICOM and AH-4 are trademarks of Icom Inc.; ExpertSDR3 and SunSDR are trademarks of Expert Electronics. This project is not affiliated with or endorsed by these companies.
+
 ## License
 
 © 2026 HB9DUT

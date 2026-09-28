@@ -1,0 +1,23 @@
+# Flash und Partitionen
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# 1-ms-Tick für die Hauptschleife (5-ms-Takt)
+CONFIG_FREERTOS_HZ=1000
+
+# WPA3 (SAE) aus: Der ESP32 meldet sich an WPA2/WPA3-Routern per WPA2 an.
+# Grund: Der SAE-Handshake scheitert mit manchen Routern (AUTH_EXPIRE). Reine
+# WPA3-Netze werden damit nicht unterstützt.
+CONFIG_ESP_WIFI_ENABLE_WPA3_SAE=n
+
+# Grössere HTTP-Header (Browser senden viele Cookies/Header, Basic-Auth)
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=512
+
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
+
+# ExpertSDR3 sendet direkt nach der WebSocket-Handshake-Antwort den ganzen
+# Initialisierungsblock. Der Transport liest beides in diesen Puffer und bricht ab,
+# wenn er voll ist; er muss daher grösser als das TCP-Empfangsfenster (5760) sein.
+CONFIG_WS_BUFFER_SIZE=8192

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TCI ICOM Tuner Interface</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--fg:#1d2330;--muted:#687083;--line:#dde1e8;--acc:#1f6feb;--ok:#1a7f37;--warn:#9a6700;--err:#cf222e}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1218;--card:#181c24;--fg:#e6e9ef;--muted:#8b93a5;--line:#2a303c;--acc:#4c8dff;--ok:#3fb950;--warn:#d29922;--err:#f85149}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:760px;margin:0 auto;padding:16px}
+h1{font-size:20px;margin:4px 0 16px}
+h2{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}
+.ok{color:var(--ok)}.warn{color:var(--warn)}.err{color:var(--err)}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--muted);font-weight:500}
+fieldset{border:0;padding:0;margin:0 0 16px}legend{font-weight:600;margin-bottom:4px;padding:0}
+label{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:10px;align-items:center;margin:6px 0}
+label small{display:block;color:var(--muted);font-size:12px}
+input,select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
+input[type=checkbox]{width:auto;justify-self:start}
+button{padding:8px 16px;border:0;border-radius:6px;background:var(--acc);color:#fff;font:inherit;cursor:pointer}
+button.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}#msg{color:var(--muted)}
+@media(max-width:520px){label{grid-template-columns:1fr;gap:4px}}
+</style></head><body><main>
+<h1>TCI ICOM Tuner Interface</h1>
+<section><h2>Status</h2><dl id="st"><dt>Status</dt><dd>lade…</dd></dl></section>
+<section><h2>Letzte Abstimmungen</h2><div class="scroll"><table>
+<thead><tr><th>vor</th><th>TRX</th><th>Frequenz</th><th>Ergebnis</th><th>SWR</th><th>Dauer</th></tr></thead>
+<tbody id="hist"></tbody></table></div></section>
+<section><h2>Einstellungen</h2><form id="f">
+<fieldset><legend>WLAN</legend>
+<label>SSID<input name="wifi_ssid" maxlength="32"></label>
+<label>Passwort<input name="wifi_pass" type="password" maxlength="64" autocomplete="new-password"></label>
+<label><span>Hostname<small>erreichbar als &lt;hostname&gt;.local</small></span><input name="hostname" maxlength="32"></label>
+</fieldset>
+<fieldset><legend>TCI (ExpertSDR3)</legend>
+<label>Host / IP<input name="tci_host" maxlength="64"></label>
+<label>Port<input name="tci_port" type="number" min="1" max="65535"></label>
+<label>Transceiver<select name="tune_trx"><option value="-1">alle</option><option value="0">TRX 0</option><option value="1">TRX 1</option><option value="2">TRX 2</option><option value="3">TRX 3</option></select></label>
+</fieldset>
+<fieldset><legend>Tuner (AH-4-Schnittstelle)</legend>
+<label><span>KEY-Eingang aktiv bei<small>GPIO26: HIGH = Standard-Interface (invertierender Transistor)</small></span><select name="key_active_high"><option value="1">HIGH</option><option value="0">LOW</option></select></label>
+<label><span>START halten<small>ms nach Aktivierung von KEY</small></span><input name="start_hold_ms" type="number" min="50" max="2000"></label>
+<label><span>Wartezeit auf KEY<small>ms ab Start, sonst „keine Antwort“</small></span><input name="key_wait_ms" type="number" min="500" max="10000"></label>
+<label><span>Tune-Timeout<small>ms ab Start, danach Träger aus</small></span><input name="tune_timeout_ms" type="number" min="1000" max="60000"></label>
+<label><span>SWR-Messzeit<small>ms Träger nach Tune-Ende, 0 = keine Messung</small></span><input name="swr_settle_ms" type="number" min="0" max="2000"></label>
+<label><span>Max. SWR<small>0 = keine Prüfung</small></span><input name="swr_max" type="number" step="0.1" min="0" max="10"></label>
+</fieldset>
+<fieldset><legend>Weboberfläche</legend>
+<label><span>Passwort<small>Benutzer „admin“</small></span><input name="web_pass" type="password" autocomplete="new-password"></label>
+<label>Passwortschutz entfernen<input name="web_pass_clear" type="checkbox" value="1"></label>
+</fieldset>
+<div class="row"><button>Speichern</button><button type="button" class="sec" id="rb">Neustart</button><span id="msg"></span></div>
+</form></section>
+</main><script>
+const $=id=>document.getElementById(id),F=$('f');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const mhz=hz=>hz?(hz/1e6).toFixed(3)+' MHz':'–';
+const dur=s=>s<60?s+' s':s<3600?Math.floor(s/60)+' min':s<86400?Math.floor(s/3600)+' h':Math.floor(s/86400)+' d';
+const RES={ok:['OK','ok'],swr_high:['SWR zu hoch','err'],tuner_failed:['Tuner meldet Fehlschlag','err'],no_response:['Tuner antwortet nicht','err'],timeout:['Timeout','err'],aborted:['Abgebrochen','warn'],stop_failed:['Stopp nicht bestätigt','err']};
+const STATE={idle:'bereit',wait_key:'warte auf Tuner',tuning:'stimmt ab',settle:'SWR-Messung',stopping:'beende Tune'};
+const row=(k,v,c)=>`<dt>${k}</dt><dd${c?` class="${c}"`:''}>${v}</dd>`;
+async function status(){
+ try{
+  const s=await(await fetch('/api/status')).json(),w=s.wifi,t=s.tci,u=s.tuner;
+  let h=row('WLAN',w.connected?`${esc(w.ssid)} · ${w.ip} · ${w.rssi} dBm`:'nicht verbunden',w.connected?'ok':'err');
+  if(w.ap)h+=row('Access-Point',`${esc(w.ap_ssid)} · 192.168.4.1`,'warn');
+  h+=row('TCI',t.ready?`${esc(t.device)} · ${esc(t.protocol)}`:t.connected?'verbunden, warte auf READY':t.host?`nicht verbunden (${esc(t.host)}:${t.port})`:'kein Server konfiguriert',t.ready?'ok':'err');
+  h+=row('Tuner',u.state=='idle'?'bereit':`${STATE[u.state]} · TRX ${u.trx} · ${(u.elapsed_ms/1000).toFixed(1)} s`,u.state=='idle'?'':'warn');
+  h+=row('KEY-Leitung',u.key?'aktiv':'inaktiv');
+  if(u.swr!==null)h+=row('SWR',u.swr.toFixed(2));
+  h+=row('Laufzeit',`${dur(s.uptime)} · Firmware ${esc(s.fw)}`);
+  $('st').innerHTML=h;
+  $('hist').innerHTML=s.history.length?s.history.map(e=>{const r=RES[e.result]||[e.result,''];
+   return `<tr><td>${dur(e.ago_s)}</td><td>${e.trx}</td><td>${mhz(e.freq)}</td><td class="${r[1]}">${r[0]}</td><td>${e.swr===null?'–':e.swr.toFixed(2)}</td><td>${(e.duration_ms/1000).toFixed(1)} s</td></tr>`}).join('')
+   :'<tr><td colspan="6">noch keine</td></tr>';
+ }catch(e){$('st').innerHTML=row('Gerät','keine Antwort','err')}
+}
+async function load(){
+ const s=await(await fetch('/api/settings')).json();
+ for(const[k,v]of Object.entries(s)){const e=F.elements[k];if(e&&e.type!='password'&&e.type!='checkbox')e.value=v}
+ F.wifi_pass.placeholder=s.wifi_pass_set?'unverändert':'kein Passwort';
+ F.web_pass.placeholder=s.web_pass_set?'unverändert':'kein Schutz';
+}
+F.onsubmit=async ev=>{
+ ev.preventDefault();$('msg').textContent='Speichere…';
+ try{
+  const r=await(await fetch('/api/settings',{method:'POST',body:new URLSearchParams(new FormData(F))})).json();
+  $('msg').textContent=r.reboot?'Gespeichert – Gerät startet neu…':'Gespeichert';
+  F.wifi_pass.value=F.web_pass.value='';F.web_pass_clear.checked=false;
+  if(!r.reboot)load();
+ }catch(e){$('msg').textContent='Fehler beim Speichern'}
+};
+$('rb').onclick=async()=>{if(confirm('Gerät neu starten?')){await fetch('/api/reboot',{method:'POST'});$('msg').textContent='Neustart…'}};
+load();status();setInterval(status,1000);
+</script></body></html>

@@ -7,6 +7,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "app_util.h"
 #include "cJSON.h"
@@ -189,6 +190,7 @@ bool WebUi::begin() {
         {"/api/settings", HTTP_GET, handleGetSettings, this},
         {"/api/settings", HTTP_POST, handlePostSettings, this},
         {"/api/reboot", HTTP_POST, handleReboot, this},
+        {"/api/scan", HTTP_GET, handleScan, this},
         {"/api/update", HTTP_POST, handleUpdate, this},
     };
     for (const httpd_uri_t& r : routes) httpd_register_uri_handler(server_, &r);
@@ -362,6 +364,31 @@ esp_err_t WebUi::handleReboot(httpd_req_t* req) {
     self(req)->scheduleReboot();
     cJSON* root = cJSON_CreateObject();
     cJSON_AddBoolToObject(root, "ok", true);
+    return sendJson(req, root);
+}
+
+// WLAN-Suche für die Auswahl der SSID. Gesperrt während einer Abstimmung, weil der
+// Scan kurz die Kanäle wechselt und den TCI-Verkehr verzögert.
+esp_err_t WebUi::handleScan(httpd_req_t* req) {
+    WebUi& ui = *self(req);
+    {
+        std::lock_guard<std::recursive_mutex> lock(appMutex());
+        if (!ui.authorized(req)) return ESP_OK;
+        if (ui.tuner_.busy()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "busy");
+    }
+    std::vector<net::Network> networks;
+    if (!net::scan(networks)) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "scan_failed");
+
+    cJSON* root = cJSON_CreateObject();
+    cJSON* list = cJSON_AddArrayToObject(root, "networks");
+    for (const net::Network& n : networks) {
+        cJSON* e = cJSON_CreateObject();
+        cJSON_AddStringToObject(e, "ssid", n.ssid.c_str());
+        cJSON_AddNumberToObject(e, "rssi", n.rssi);
+        cJSON_AddNumberToObject(e, "ch", n.channel);
+        cJSON_AddBoolToObject(e, "secure", n.secure);
+        cJSON_AddItemToArray(list, e);
+    }
     return sendJson(req, root);
 }
 

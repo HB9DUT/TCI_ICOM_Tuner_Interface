@@ -11,7 +11,7 @@ Towards the tuner, the interface takes the place of an ICOM radio. This makes it
 - **Safety:** The tune carrier is switched off after an adjustable timeout at the latest, even if the tuner does not respond. The stop command is repeated until ExpertSDR3 confirms it.
 - **SWR check:** After tuning, the SWR is measured via the TX sensors of ExpertSDR3 and checked against a limit.
 - **Web interface:** Status, the last 10 tuning runs with frequency, result, SWR and duration, and all settings. Optional password protection.
-- **Setup without programming:** Without Wi-Fi, the interface opens an access point with a configuration page (captive portal).
+- **Setup without programming:** Without Wi-Fi, the interface opens an access point with a configuration page (captive portal). Available Wi-Fi networks can be selected from a list.
 - **Status LED:** Shows Wi-Fi, TCI connection, tuning in progress and errors.
 - **Firmware update via the web interface:** Automatically falls back to the previous firmware if the new one does not start.
 - **Reachable via mDNS:** at `http://tci-tuner.local/`.
@@ -145,7 +145,7 @@ The web installer can also be used for updates. Settings are kept unless you cho
 
 1. **Access point:** On first start, or if no Wi-Fi connection is established for 30 s, the interface opens the access point `TCI-Tuner-XXXX` with the password `tci-tuner`.
 2. **Configuration page:** After connecting, the page usually opens by itself; otherwise open `http://192.168.4.1/`. The `http://` matters: with an additional LAN connection or "Secure DNS" enabled in the browser, the automatic redirect in Windows otherwise ends up on the internet.
-3. **Enter settings:** Wi-Fi, plus TCI host (IP of the PC running ExpertSDR3) and port, then save. The interface restarts.
+3. **Enter settings:** Select the Wi-Fi network from the list (or click *Scan*), enter its password, plus TCI host (IP of the PC running ExpertSDR3) and port, then save. The interface restarts.
 4. **Operation:** The interface is then reachable at `http://tci-tuner.local/` or its IP address.
 
 ### Settings
@@ -174,6 +174,7 @@ Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a re
 | GET | `/api/settings` | Settings (without passwords) |
 | POST | `/api/settings` | Change settings (`application/x-www-form-urlencoded`) |
 | POST | `/api/reboot` | Restart |
+| GET | `/api/scan` | Visible Wi-Fi networks (takes about 3 s, blocked while tuning) |
 | POST | `/api/update` | Firmware update, body is the `firmware.bin` (`application/octet-stream`) |
 
 ## Status LED

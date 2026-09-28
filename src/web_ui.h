@@ -22,6 +22,7 @@ private:
     static esp_err_t handleGetSettings(httpd_req_t* req);
     static esp_err_t handlePostSettings(httpd_req_t* req);
     static esp_err_t handleReboot(httpd_req_t* req);
+    static esp_err_t handleScan(httpd_req_t* req);
     static esp_err_t handleUpdate(httpd_req_t* req);
     static esp_err_t handleNotFound(httpd_req_t* req, httpd_err_code_t err);
 

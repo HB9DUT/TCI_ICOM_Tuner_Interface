@@ -28,6 +28,10 @@ button.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}#msg,#umsg{color:var(--muted)}
 .hint{color:var(--muted);font-size:13px;margin:0 0 10px}code{font-size:12px}
 input[type=file]{width:auto;flex:1;min-width:0}progress{width:100%;margin-top:10px}
+.ssid{display:flex;gap:8px}.ssid input{flex:1;min-width:0}.ssid button{padding:7px 12px;flex:none}
+#nets{display:grid;gap:4px;margin:2px 0 8px}#nets:empty{display:none}
+#nets button{display:flex;justify-content:space-between;gap:10px;background:var(--bg);color:var(--fg);border:1px solid var(--line);padding:7px 10px;text-align:left}
+#nets button:hover{border-color:var(--acc)}#nets small{color:var(--muted);white-space:nowrap}#nets .note{color:var(--muted);font-size:13px}
 footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 12px}
 @media(max-width:520px){label{grid-template-columns:1fr;gap:4px}}
 </style></head><body><main>
@@ -38,7 +42,8 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 12px}
 <tbody id="hist"></tbody></table></div></section>
 <section><h2 data-t="settings">Einstellungen</h2><form id="f">
 <fieldset><legend data-t="wifi">WLAN</legend>
-<label><span>SSID</span><input name="wifi_ssid" maxlength="32"></label>
+<label><span>SSID</span><span class="ssid"><input name="wifi_ssid" maxlength="32"><button type="button" class="sec" id="scan" data-t="scan">Suchen</button></span></label>
+<div id="nets"></div>
 <label><span data-t="password">Passwort</span><input name="wifi_pass" type="password" maxlength="64" autocomplete="new-password"></label>
 <label><span data-t="hostname">Hostname<small>erreichbar als &lt;hostname&gt;.local</small></span><input name="hostname" maxlength="32"></label>
 </fieldset>
@@ -79,6 +84,8 @@ de:{status:'Status',loading:'lade…',history:'Letzte Abstimmungen',h_ago:'vor',
  swr_settle:'SWR-Messzeit<small>ms Träger nach Tune-Ende, 0 = keine Messung</small>',
  swr_max:'Max. SWR<small>0 = keine Prüfung</small>',
  web:'Weboberfläche',web_pass:'Passwort<small>Benutzer „admin“</small>',web_pass_clear:'Passwortschutz entfernen',
+ scan:'Suchen',scanning:'Suche WLANs…',no_nets:'Keine WLANs gefunden.',open_net:'offen',
+ e_scan_failed:'Suche fehlgeschlagen. Bitte nochmals versuchen.',
  save:'Speichern',reboot:'Neustart',update:'Firmware-Update',install:'Installieren',
  update_hint:'Firmware-Datei (<code>.bin</code>) wählen und installieren. Das Gerät startet danach neu, die Einstellungen bleiben erhalten. Falls die neue Firmware nicht richtig startet, kehrt das Gerät automatisch zur bisherigen Version zurück.',
  r_wifi:'WLAN',r_ap:'Access-Point',r_tuner:'Tuner',r_key:'KEY-Leitung',r_uptime:'Laufzeit',r_device:'Gerät',
@@ -107,6 +114,8 @@ en:{status:'Status',loading:'loading…',history:'Recent tuning runs',h_ago:'ago
  swr_settle:'SWR measuring time<small>ms of carrier after tuning, 0 = no measurement</small>',
  swr_max:'Max. SWR<small>0 = no check</small>',
  web:'Web interface',web_pass:'Password<small>user “admin”</small>',web_pass_clear:'Remove password protection',
+ scan:'Scan',scanning:'Scanning for Wi-Fi networks…',no_nets:'No Wi-Fi networks found.',open_net:'open',
+ e_scan_failed:'Scan failed. Please try again.',
  save:'Save',reboot:'Restart',update:'Firmware update',install:'Install',
  update_hint:'Select a firmware file (<code>.bin</code>) and install it. The device restarts afterwards; settings are kept. If the new firmware does not start properly, the device automatically returns to the previous version.',
  r_wifi:'Wi-Fi',r_ap:'Access point',r_tuner:'Tuner',r_key:'KEY line',r_uptime:'Uptime',r_device:'Device',
@@ -133,7 +142,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const mhz=hz=>hz?(hz/1e6).toFixed(3)+' MHz':'–';
 const dur=s=>s<60?s+' s':s<3600?Math.floor(s/60)+' min':s<86400?Math.floor(s/3600)+' h':Math.floor(s/86400)+' d';
 const RES={ok:'ok',swr_high:'err',tuner_failed:'err',no_response:'err',timeout:'err',aborted:'warn',stop_failed:'err'};
-let tuning=false,uploading=false,last=null,pw=null;
+let tuning=false,uploading=false,autoScanned=false,last=null,pw=null;
 const row=(k,v,c)=>`<dt>${k}</dt><dd${c?` class="${c}"`:''}>${v}</dd>`;
 function render(){
  const s=last;if(!s)return;
@@ -158,7 +167,22 @@ function placeholders(){
 function setLang(l){
  lang=l;store.set(l);document.documentElement.lang=l;
  document.querySelectorAll('[data-t]').forEach(e=>e.innerHTML=T(e.dataset.t));
- document.querySelectorAll('#lang button').forEach(b=>b.classList.toggle('on',b.dataset.l==l));
+ const bars=r=>r>=-55?'▂▄▆█':r>=-67?'▂▄▆':r>=-78?'▂▄':'▂';
+async function scan(){
+ const n=$('nets'),b=$('scan');
+ b.disabled=true;n.innerHTML=`<div class="note">${T('scanning')}</div>`;
+ try{
+  const x=await fetch('/api/scan'),t=await x.text();
+  if(!x.ok){const k='e_'+t.trim();n.innerHTML=`<div class="note err">${esc(L[lang][k]?T(k):T('e_scan_failed'))}</div>`;return}
+  const l=JSON.parse(t).networks;
+  n.innerHTML=l.length?l.map(w=>`<button type="button" data-ssid="${esc(w.ssid)}"><span>${esc(w.ssid)}</span><small>${w.secure?'':T('open_net')+' · '}${bars(w.rssi)} ${w.rssi} dBm</small></button>`).join('')
+   :`<div class="note">${T('no_nets')}</div>`;
+  n.querySelectorAll('button').forEach(e=>e.onclick=()=>{F.wifi_ssid.value=e.dataset.ssid;n.innerHTML='';F.wifi_pass.focus()});
+ }catch(e){n.innerHTML=`<div class="note err">${T('e_scan_failed')}</div>`}
+ finally{b.disabled=false}
+}
+$('scan').onclick=scan;
+document.querySelectorAll('#lang button').forEach(b=>b.classList.toggle('on',b.dataset.l==l));
  render();placeholders();
 }
 async function status(){
@@ -166,6 +190,7 @@ async function status(){
  try{
   last=await(await fetch('/api/status')).json();
   $('ver').textContent=last.fw;tuning=last.tuner.state!='idle';
+  if(last.wifi.ap&&!last.wifi.connected&&!autoScanned){autoScanned=true;scan()}
   render();
  }catch(e){$('st').innerHTML=row(T('r_device'),T('no_answer'),'err')}
 }

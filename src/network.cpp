@@ -1,5 +1,6 @@
 #include "network.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cinttypes>
 #include <cstring>
@@ -54,6 +55,7 @@ uint8_t loggedReason = 0;
 uint32_t loggedReasonMs = 0;
 bool scanPending = false;
 bool scanDone = false;
+std::atomic<bool> scanning{false};  // Scan aus der Weboberfläche läuft
 
 const char* reasonName(uint8_t reason) {
     switch (reason) {
@@ -144,6 +146,7 @@ void logDisconnects(uint32_t now) {
 }
 
 void connectSta() {
+    if (scanning) return;  // wird nach dem Scan von loop() erneut versucht
     staRetryMs = millis();
     failedAttemptsAtConnect = failedAttempts;
     ESP_LOGI(TAG, "verbinde mit \"%s\" (Passwort: %u Zeichen)", cfg->wifiSsid.c_str(),
@@ -165,6 +168,7 @@ void connectSta() {
 
 // Einmalige Diagnose nach dem ersten Fehlschlag: Ist das WLAN sichtbar, und wie ist es verschlüsselt?
 void scanDiagnose() {
+    if (scanning) return;
     scanPending = false;
     scanDone = true;
     esp_wifi_disconnect();  // laufende Verbindungsversuche stoppen, sonst schlägt der Scan fehl
@@ -336,4 +340,38 @@ uint32_t net::apIp() {
     esp_netif_ip_info_t info = {};
     if (apNetif) esp_netif_get_ip_info(apNetif, &info);
     return info.ip.addr;
+}
+
+bool net::scan(std::vector<Network>& result) {
+    if (scanning.exchange(true)) return false;
+    // Ein laufender Verbindungsversuch blockiert den Scan; eine bestehende Verbindung nicht
+    if (!gotIp) esp_wifi_disconnect();
+    std::vector<wifi_ap_record_t> aps;
+    const bool ok = esp_wifi_scan_start(nullptr, true) == ESP_OK;
+    if (ok) {
+        uint16_t n = 0;
+        esp_wifi_scan_get_ap_num(&n);
+        aps.resize(n);
+        esp_wifi_scan_get_ap_records(&n, aps.data());
+        aps.resize(n);
+    }
+    scanning = false;
+    if (!ok) {
+        ESP_LOGW(TAG, "Scan fehlgeschlagen");
+        return false;
+    }
+
+    result.clear();
+    for (const wifi_ap_record_t& ap : aps) {
+        const char* ssid = reinterpret_cast<const char*>(ap.ssid);
+        if (!*ssid) continue;
+        auto it = std::find_if(result.begin(), result.end(), [&](const Network& x) { return x.ssid == ssid; });
+        if (it == result.end()) {
+            result.push_back({ssid, ap.rssi, ap.primary, ap.authmode != WIFI_AUTH_OPEN});
+        } else if (ap.rssi > it->rssi) {
+            *it = {ssid, ap.rssi, ap.primary, ap.authmode != WIFI_AUTH_OPEN};
+        }
+    }
+    std::sort(result.begin(), result.end(), [](const Network& a, const Network& b) { return a.rssi > b.rssi; });
+    return true;
 }

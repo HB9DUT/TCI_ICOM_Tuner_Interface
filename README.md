@@ -24,7 +24,7 @@ The web interface is available in English and German and follows the browser lan
 - SDR with ExpertSDR3 and the TCI server enabled (*Options → TCI*)
 - Tuner with an ICOM AH-4 interface
 - Interface circuit (see [Hardware](#hardware)) and a 13.8 V supply
-- [PlatformIO](https://platformio.org/) for building and flashing; it uses ESP-IDF 5.4
+- Chrome or Edge for the [web installer](https://hb9dut.github.io/TCI_ICOM_Tuner_Interface/), or [PlatformIO](https://platformio.org/) to build from source (ESP-IDF 5.4)
 
 ## Tuning sequence
 
@@ -119,32 +119,27 @@ The pin assignment is in [src/hw_config.h](src/hw_config.h).
 
 ## Installation
 
+Open the **[web installer](https://hb9dut.github.io/TCI_ICOM_Tuner_Interface/)** in Chrome or Edge, connect the ESP32 via USB and click *Install firmware*. No software needs to be installed.
+
+The firmware runs on boards with the classic ESP32 chip and at least 4 MB flash; ESP32-S2, -S3, -C3 and -C6 are not supported.
+
+Alternatively, every [release](https://github.com/HB9DUT/TCI_ICOM_Tuner_Interface/releases/latest) contains `tci-tuner-<version>-full.bin`, which can be written with esptool at address `0x0`:
+
 ```
-git clone https://github.com/HB9DUT/TCI_ICOM_Tuner_Interface.git
-cd TCI_ICOM_Tuner_Interface
-pio run -t upload
-pio device monitor
+esptool.py --chip esp32 write_flash 0x0 tci-tuner-<version>-full.bin
 ```
 
-On the first build, PlatformIO downloads ESP-IDF and the components listed in [src/idf_component.yml](src/idf_component.yml) (`esp_websocket_client`, `mdns`). The exact versions are in [dependencies.lock](dependencies.lock).
+### Updates
 
-### Updating via the web interface
+Once installed, updates are done in the web interface of the device:
 
-Once the firmware has been installed via USB, all further updates can be done over Wi-Fi:
-
-1. Run `pio run`. This creates `.pio/build/esp32dev/firmware.bin`.
+1. Download `firmware.bin` from the [latest release](https://github.com/HB9DUT/TCI_ICOM_Tuner_Interface/releases/latest).
 2. In the web interface, under **Firmware update**, select the file and click **Install**.
 3. The interface writes the firmware to the free app partition and restarts. Settings are kept.
 
 Before writing, the interface checks that the file is firmware for this project. Updates are blocked while tuning is in progress. The new firmware is only marked valid once it reaches the web server at startup. If it crashes before that, the bootloader falls back to the previous firmware on the next restart (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`).
 
-To update with curl:
-
-```
-curl -H "Content-Type: application/octet-stream" --data-binary @.pio/build/esp32dev/firmware.bin http://tci-tuner.local/api/update
-```
-
-With password protection, add `-u admin:<password>`.
+The web installer can also be used for updates. Settings are kept unless you choose to erase the device.
 
 ## Setup
 
@@ -198,6 +193,31 @@ Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a re
 
 **WebSocket buffer:** Right after connecting, ExpertSDR3 sends a large block of initialisation data. The WebSocket transport buffer is therefore increased to 8 KB (`CONFIG_WS_BUFFER_SIZE`).
 
+## Building from source
+
+```
+git clone https://github.com/HB9DUT/TCI_ICOM_Tuner_Interface.git
+cd TCI_ICOM_Tuner_Interface
+pio run -t upload
+pio device monitor
+```
+
+On the first build, PlatformIO downloads ESP-IDF and the components listed in [src/idf_component.yml](src/idf_component.yml) (`esp_websocket_client`, `mdns`). The exact versions are in [dependencies.lock](dependencies.lock).
+
+The version number comes from the Git tag (`git describe`). Builds between releases show e.g. `2.4.0-3-gabc1234`; after a new commit, run `pio run -t clean` so the number is updated.
+
+A self-built `.pio/build/esp32dev/firmware.bin` can be installed via the web interface or with curl:
+
+```
+curl -H "Content-Type: application/octet-stream" --data-binary @.pio/build/esp32dev/firmware.bin http://tci-tuner.local/api/update
+```
+
+With password protection, add `-u admin:<password>`.
+
+### Releases
+
+Pushing a tag `v*` (e.g. `git tag v2.5.0 && git push origin v2.5.0`) starts the [release workflow](.github/workflows/release.yml). It builds the firmware, creates the GitHub release with `firmware.bin` and the full image, and publishes the web installer ([webflasher/](webflasher/)) to GitHub Pages.
+
 ## Project structure
 
 | File | Content |
@@ -212,6 +232,8 @@ Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a re
 | `src/hw_config.h` | Pin assignment |
 | `sdkconfig.defaults` | ESP-IDF configuration |
 | `partitions.csv` | Partition table with two app partitions for updates via the web interface |
+| `webflasher/` | Web installer page (ESP Web Tools), published with each release |
+| `.github/workflows/release.yml` | Builds releases and publishes the web installer |
 
 The application logic runs in a single main loop. The WebSocket client passes its events through a queue; the HTTP handlers lock a shared mutex (`appMutex()`).
 

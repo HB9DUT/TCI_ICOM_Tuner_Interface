@@ -1,0 +1,86 @@
+# Baut die Firmware bei jedem Tag v*, erstellt das GitHub-Release und
+# veröffentlicht den Webflasher auf GitHub Pages.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:  # nur Build und Webflasher, ohne Release
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Tags für die Versionsnummer (git describe)
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('platformio.ini', 'dependencies.lock') }}
+
+      - name: PlatformIO installieren
+        run: pip install platformio
+
+      - name: Firmware bauen
+        run: pio run
+
+      - name: Dateien zusammenstellen
+        run: |
+          VER=$(git describe --tags --always | sed 's/^v//')
+          B=.pio/build/esp32dev
+          mkdir -p site release
+          cp webflasher/index.html $B/bootloader.bin $B/partitions.bin $B/ota_data_initial.bin $B/firmware.bin site/
+          cat > site/manifest.json <<EOF
+          {
+            "name": "TCI to ICOM Tuner Interface",
+            "version": "$VER",
+            "new_install_prompt_erase": true,
+            "builds": [{
+              "chipFamily": "ESP32",
+              "parts": [
+                {"path": "bootloader.bin", "offset": 4096},
+                {"path": "partitions.bin", "offset": 32768},
+                {"path": "ota_data_initial.bin", "offset": 57344},
+                {"path": "firmware.bin", "offset": 65536}
+              ]
+            }]
+          }
+          EOF
+          # Gesamtabbild für esptool (Adresse 0x0) und App allein für das Update per Weboberfläche
+          python ~/.platformio/packages/tool-esptoolpy/esptool.py --chip esp32 merge_bin \
+            -o release/tci-tuner-$VER-full.bin \
+            --flash_mode keep --flash_freq keep --flash_size keep \
+            0x1000 $B/bootloader.bin 0x8000 $B/partitions.bin 0xe000 $B/ota_data_initial.bin 0x10000 $B/firmware.bin
+          cp $B/firmware.bin release/firmware.bin
+          ls -l site release
+
+      - name: Release erstellen
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/* --title "$GITHUB_REF_NAME" --generate-notes
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

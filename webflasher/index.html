@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TCI to ICOM Tuner Interface – Installer</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--fg:#1d2330;--muted:#687083;--line:#dde1e8;--acc:#1f6feb;--err:#cf222e}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1218;--card:#181c24;--fg:#e6e9ef;--muted:#8b93a5;--line:#2a303c;--acc:#4c8dff;--err:#f85149}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:720px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:8px 0 4px}.sub{color:var(--muted);margin:0 0 18px}
+h2{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+ul,ol{margin:0;padding-left:20px}li{margin:3px 0}a{color:var(--acc)}code{font-size:13px}
+esp-web-install-button button{padding:10px 20px;border:0;border-radius:6px;background:var(--acc);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+.err{color:var(--err)}.muted{color:var(--muted);font-size:13px}
+footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 12px}
+</style></head><body><main>
+<h1>TCI to ICOM Tuner Interface</h1>
+<p class="sub">Firmware installer · version <span id="ver">…</span></p>
+
+<section><h2>Install</h2>
+<p>Connect the ESP32 via USB and click the button. Select the serial port in the dialog that opens.</p>
+<esp-web-install-button manifest="manifest.json">
+ <button slot="activate">Install firmware</button>
+ <span slot="unsupported" class="err">Your browser does not support Web Serial. Please use Chrome or Edge on a desktop computer.</span>
+ <span slot="not-allowed" class="err">Web Serial requires a secure connection (https).</span>
+</esp-web-install-button>
+<p class="muted">When updating, you can choose whether to erase the device. Without erasing, the settings are kept.</p>
+</section>
+
+<section><h2>Requirements</h2>
+<ul>
+<li>ESP32 board with the classic ESP32 chip and at least 4 MB flash, e.g. ESP32-DevKitC. ESP32-S2, -S3, -C3 and -C6 are not supported.</li>
+<li>Chrome or Edge on a desktop computer.</li>
+<li>USB driver for the board's serial chip, if the port does not appear: <a href="https://www.silabs.com/developer-tools/usb-to-uart-bridge-vcp-drivers">CP210x</a> or <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html">CH340</a>.</li>
+<li>If the connection fails, hold the <b>BOOT</b> button on the board while connecting.</li>
+</ul></section>
+
+<section><h2>After installation</h2>
+<ol>
+<li>Connect to the Wi-Fi access point <code>TCI-Tuner-XXXX</code>, password <code>tci-tuner</code>.</li>
+<li>The configuration page opens by itself; otherwise open <code>http://192.168.4.1/</code>.</li>
+<li>Enter your Wi-Fi and the TCI server of ExpertSDR3, then save.</li>
+<li>The interface is then reachable at <code>http://tci-tuner.local/</code>.</li>
+</ol>
+<p class="muted">Later updates can also be installed in the web interface of the device: download <code>firmware.bin</code> from the <a href="https://github.com/HB9DUT/TCI_ICOM_Tuner_Interface/releases/latest">latest release</a>.</p>
+</section>
+
+<footer><a href="https://github.com/HB9DUT/TCI_ICOM_Tuner_Interface">GitHub</a> · © 2026 HB9DUT · GPL-3.0-or-later</footer>
+</main><script>
+fetch('manifest.json').then(r=>r.json()).then(m=>{document.getElementById('ver').textContent=m.version}).catch(()=>{});
+</script></body></html>

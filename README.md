@@ -221,6 +221,10 @@ The application logic runs in a single main loop. The WebSocket client passes it
 - K9EQ: [Inside the Icom AH-4 Tuner](https://www.hamoperator.com/HF/AH-4_Design_and_Operation.pdf) (sequence, levels, failure signal)
 - K9EQ: [AH-4 Universal Interface](https://www.hamoperator.com/Hamoperator/AH-4_Universal_Interface_files/ah4-manual-5.pdf)
 
-## Copyright
+## License
 
 © 2026 HB9DUT
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version (`GPL-3.0-or-later`).
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the [LICENSE](LICENSE) file for details.

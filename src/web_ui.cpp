@@ -128,47 +128,47 @@ bool recvExact(httpd_req_t* req, char* buf, size_t len) {
 const char* checkImage(const char* data, size_t len) {
     constexpr size_t offset = sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t);
     if (len < offset + sizeof(esp_app_desc_t) || static_cast<uint8_t>(data[0]) != ESP_IMAGE_HEADER_MAGIC) {
-        return "Datei ist keine ESP32-Firmware";
+        return "not_firmware";
     }
     esp_app_desc_t desc;
     memcpy(&desc, data + offset, sizeof(desc));
-    if (desc.magic_word != ESP_APP_DESC_MAGIC_WORD) return "Datei ist keine ESP32-Firmware";
+    if (desc.magic_word != ESP_APP_DESC_MAGIC_WORD) return "not_firmware";
     if (strncmp(desc.project_name, esp_app_get_description()->project_name, sizeof(desc.project_name)) != 0) {
-        return "Firmware gehört zu einem anderen Projekt";
+        return "wrong_project";
     }
     ESP_LOGI(TAG, "Update auf Firmware %s", desc.version);
     return nullptr;
 }
 
 // Schreibt den Body in die freie App-Partition und macht sie zur Startpartition.
-// Liefert nullptr bei Erfolg, sonst eine Fehlermeldung.
+// Liefert nullptr bei Erfolg, sonst eine Fehlerkennung (von der Weboberfläche übersetzt).
 const char* receiveFirmware(httpd_req_t* req) {
     const esp_partition_t* part = esp_ota_get_next_update_partition(nullptr);
-    if (!part) return "keine Update-Partition";
-    if (req->content_len == 0 || req->content_len > part->size) return "ungültige Dateigrösse";
+    if (!part) return "no_partition";
+    if (req->content_len == 0 || req->content_len > part->size) return "bad_size";
 
     std::unique_ptr<char[]> buf(new (std::nothrow) char[OTA_CHUNK]);
-    if (!buf) return "zu wenig Speicher";
+    if (!buf) return "no_memory";
     esp_ota_handle_t ota = 0;
-    if (esp_ota_begin(part, OTA_WITH_SEQUENTIAL_WRITES, &ota) != ESP_OK) return "Update kann nicht gestartet werden";
+    if (esp_ota_begin(part, OTA_WITH_SEQUENTIAL_WRITES, &ota) != ESP_OK) return "begin_failed";
 
     const char* error = nullptr;
     for (size_t done = 0; done < req->content_len && !error;) {
         const size_t len = std::min(OTA_CHUNK, req->content_len - done);
         if (!recvExact(req, buf.get(), len)) {
-            error = "Übertragung abgebrochen";
+            error = "transfer_aborted";
             break;
         }
         if (done == 0) error = checkImage(buf.get(), len);
-        if (!error && esp_ota_write(ota, buf.get(), len) != ESP_OK) error = "Schreiben fehlgeschlagen";
+        if (!error && esp_ota_write(ota, buf.get(), len) != ESP_OK) error = "write_failed";
         done += len;
     }
     if (error) {
         esp_ota_abort(ota);
         return error;
     }
-    if (esp_ota_end(ota) != ESP_OK) return "Firmware ist beschädigt";
-    if (esp_ota_set_boot_partition(part) != ESP_OK) return "Startpartition kann nicht gesetzt werden";
+    if (esp_ota_end(ota) != ESP_OK) return "corrupt";
+    if (esp_ota_set_boot_partition(part) != ESP_OK) return "boot_failed";
     return nullptr;
 }
 
@@ -372,7 +372,7 @@ esp_err_t WebUi::handleUpdate(httpd_req_t* req) {
     {
         std::lock_guard<std::recursive_mutex> lock(appMutex());
         if (!ui.authorized(req)) return ESP_OK;
-        if (ui.tuner_.busy()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Tuner stimmt gerade ab");
+        if (ui.tuner_.busy()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "busy");
     }
     const char* error = receiveFirmware(req);
     if (error) {

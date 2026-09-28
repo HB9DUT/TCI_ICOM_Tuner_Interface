@@ -6,7 +6,11 @@
 @media(prefers-color-scheme:dark){:root{--bg:#0f1218;--card:#181c24;--fg:#e6e9ef;--muted:#8b93a5;--line:#2a303c;--acc:#4c8dff;--ok:#3fb950;--warn:#d29922;--err:#f85149}}
 *{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
 main{max-width:760px;margin:0 auto;padding:16px}
-h1{font-size:20px;margin:4px 0 16px}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:4px 0 16px}
+h1{font-size:20px;margin:0}
+#lang{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex:none}
+#lang button{background:transparent;color:var(--muted);border-radius:0;padding:4px 10px;font-size:13px}
+#lang button.on{background:var(--acc);color:#fff}
 h2{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
 dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}
@@ -27,99 +31,174 @@ input[type=file]{width:auto;flex:1;min-width:0}progress{width:100%;margin-top:10
 footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 12px}
 @media(max-width:520px){label{grid-template-columns:1fr;gap:4px}}
 </style></head><body><main>
-<h1>TCI to ICOM Tuner Interface</h1>
-<section><h2>Status</h2><dl id="st"><dt>Status</dt><dd>lade…</dd></dl></section>
-<section><h2>Letzte Abstimmungen</h2><div class="scroll"><table>
-<thead><tr><th>vor</th><th>TRX</th><th>Frequenz</th><th>Ergebnis</th><th>SWR</th><th>Dauer</th></tr></thead>
+<header><h1>TCI to ICOM Tuner Interface</h1><div id="lang"><button type="button" data-l="de">DE</button><button type="button" data-l="en">EN</button></div></header>
+<section><h2 data-t="status">Status</h2><dl id="st"><dt data-t="status">Status</dt><dd data-t="loading">lade…</dd></dl></section>
+<section><h2 data-t="history">Letzte Abstimmungen</h2><div class="scroll"><table>
+<thead><tr><th data-t="h_ago">vor</th><th>TRX</th><th data-t="h_freq">Frequenz</th><th data-t="h_result">Ergebnis</th><th>SWR</th><th data-t="h_dur">Dauer</th></tr></thead>
 <tbody id="hist"></tbody></table></div></section>
-<section><h2>Einstellungen</h2><form id="f">
-<fieldset><legend>WLAN</legend>
-<label>SSID<input name="wifi_ssid" maxlength="32"></label>
-<label>Passwort<input name="wifi_pass" type="password" maxlength="64" autocomplete="new-password"></label>
-<label><span>Hostname<small>erreichbar als &lt;hostname&gt;.local</small></span><input name="hostname" maxlength="32"></label>
+<section><h2 data-t="settings">Einstellungen</h2><form id="f">
+<fieldset><legend data-t="wifi">WLAN</legend>
+<label><span>SSID</span><input name="wifi_ssid" maxlength="32"></label>
+<label><span data-t="password">Passwort</span><input name="wifi_pass" type="password" maxlength="64" autocomplete="new-password"></label>
+<label><span data-t="hostname">Hostname<small>erreichbar als &lt;hostname&gt;.local</small></span><input name="hostname" maxlength="32"></label>
 </fieldset>
 <fieldset><legend>TCI (ExpertSDR3)</legend>
-<label>Host / IP<input name="tci_host" maxlength="64"></label>
-<label>Port<input name="tci_port" type="number" min="1" max="65535"></label>
-<label>Transceiver<select name="tune_trx"><option value="-1">alle</option><option value="0">TRX 0</option><option value="1">TRX 1</option><option value="2">TRX 2</option><option value="3">TRX 3</option></select></label>
+<label><span>Host / IP</span><input name="tci_host" maxlength="64"></label>
+<label><span>Port</span><input name="tci_port" type="number" min="1" max="65535"></label>
+<label><span>Transceiver</span><select name="tune_trx"><option value="-1" data-t="all">alle</option><option value="0">TRX 0</option><option value="1">TRX 1</option><option value="2">TRX 2</option><option value="3">TRX 3</option></select></label>
 </fieldset>
-<fieldset><legend>Tuner (AH-4-Schnittstelle)</legend>
-<label><span>KEY-Eingang aktiv bei<small>GPIO26: HIGH = Standard-Interface (invertierender Transistor)</small></span><select name="key_active_high"><option value="1">HIGH</option><option value="0">LOW</option></select></label>
-<label><span>START halten<small>ms nach Aktivierung von KEY</small></span><input name="start_hold_ms" type="number" min="50" max="2000"></label>
-<label><span>Wartezeit auf KEY<small>ms ab Start, sonst „keine Antwort“</small></span><input name="key_wait_ms" type="number" min="500" max="10000"></label>
-<label><span>Tune-Timeout<small>ms ab Start, danach Träger aus</small></span><input name="tune_timeout_ms" type="number" min="1000" max="60000"></label>
-<label><span>SWR-Messzeit<small>ms Träger nach Tune-Ende, 0 = keine Messung</small></span><input name="swr_settle_ms" type="number" min="0" max="2000"></label>
-<label><span>Max. SWR<small>0 = keine Prüfung</small></span><input name="swr_max" type="number" step="0.1" min="0" max="10"></label>
+<fieldset><legend data-t="tuner_iface">Tuner (AH-4-Schnittstelle)</legend>
+<label><span data-t="key_active">KEY-Eingang aktiv bei</span><select name="key_active_high"><option value="1">HIGH</option><option value="0">LOW</option></select></label>
+<label><span data-t="start_hold">START halten</span><input name="start_hold_ms" type="number" min="50" max="2000"></label>
+<label><span data-t="key_wait">Wartezeit auf KEY</span><input name="key_wait_ms" type="number" min="500" max="10000"></label>
+<label><span data-t="tune_timeout">Tune-Timeout</span><input name="tune_timeout_ms" type="number" min="1000" max="60000"></label>
+<label><span data-t="swr_settle">SWR-Messzeit</span><input name="swr_settle_ms" type="number" min="0" max="2000"></label>
+<label><span data-t="swr_max">Max. SWR</span><input name="swr_max" type="number" step="0.1" min="0" max="10"></label>
 </fieldset>
-<fieldset><legend>Weboberfläche</legend>
-<label><span>Passwort<small>Benutzer „admin“</small></span><input name="web_pass" type="password" autocomplete="new-password"></label>
-<label>Passwortschutz entfernen<input name="web_pass_clear" type="checkbox" value="1"></label>
+<fieldset><legend data-t="web">Weboberfläche</legend>
+<label><span data-t="web_pass">Passwort</span><input name="web_pass" type="password" autocomplete="new-password"></label>
+<label><span data-t="web_pass_clear">Passwortschutz entfernen</span><input name="web_pass_clear" type="checkbox" value="1"></label>
 </fieldset>
-<div class="row"><button>Speichern</button><button type="button" class="sec" id="rb">Neustart</button><span id="msg"></span></div>
+<div class="row"><button data-t="save">Speichern</button><button type="button" class="sec" id="rb" data-t="reboot">Neustart</button><span id="msg"></span></div>
 </form></section>
-<section><h2>Firmware-Update</h2>
-<p class="hint">Firmware-Datei (<code>.bin</code>) wählen und installieren. Das Gerät startet danach neu, die Einstellungen bleiben erhalten. Falls die neue Firmware nicht richtig startet, kehrt das Gerät automatisch zur bisherigen Version zurück.</p>
-<div class="row"><input type="file" id="fw" accept=".bin"><button type="button" id="up">Installieren</button></div>
+<section><h2 data-t="update">Firmware-Update</h2>
+<p class="hint" data-t="update_hint"></p>
+<div class="row"><input type="file" id="fw" accept=".bin"><button type="button" id="up" data-t="install">Installieren</button></div>
 <progress id="pg" max="1" value="0" hidden></progress><div id="umsg"></div>
 </section>
 <footer>TCI to ICOM Tuner Interface · Firmware <span id="ver">–</span> · © 2026 HB9DUT</footer>
 </main><script>
+const L={
+de:{status:'Status',loading:'lade…',history:'Letzte Abstimmungen',h_ago:'vor',h_freq:'Frequenz',h_result:'Ergebnis',h_dur:'Dauer',
+ settings:'Einstellungen',wifi:'WLAN',password:'Passwort',hostname:'Hostname<small>erreichbar als &lt;hostname&gt;.local</small>',all:'alle',
+ tuner_iface:'Tuner (AH-4-Schnittstelle)',
+ key_active:'KEY-Eingang aktiv bei<small>GPIO26: HIGH = Standard-Interface (invertierender Transistor)</small>',
+ start_hold:'START halten<small>ms nach Aktivierung von KEY</small>',
+ key_wait:'Wartezeit auf KEY<small>ms ab Start, sonst „keine Antwort“</small>',
+ tune_timeout:'Tune-Timeout<small>ms ab Start, danach Träger aus</small>',
+ swr_settle:'SWR-Messzeit<small>ms Träger nach Tune-Ende, 0 = keine Messung</small>',
+ swr_max:'Max. SWR<small>0 = keine Prüfung</small>',
+ web:'Weboberfläche',web_pass:'Passwort<small>Benutzer „admin“</small>',web_pass_clear:'Passwortschutz entfernen',
+ save:'Speichern',reboot:'Neustart',update:'Firmware-Update',install:'Installieren',
+ update_hint:'Firmware-Datei (<code>.bin</code>) wählen und installieren. Das Gerät startet danach neu, die Einstellungen bleiben erhalten. Falls die neue Firmware nicht richtig startet, kehrt das Gerät automatisch zur bisherigen Version zurück.',
+ r_wifi:'WLAN',r_ap:'Access-Point',r_tuner:'Tuner',r_key:'KEY-Leitung',r_uptime:'Laufzeit',r_device:'Gerät',
+ not_connected:'nicht verbunden',wait_ready:'verbunden, warte auf READY',no_server:'kein Server konfiguriert',no_answer:'keine Antwort',
+ active:'aktiv',inactive:'inaktiv',none_yet:'noch keine',
+ s_idle:'bereit',s_wait_key:'warte auf Tuner',s_tuning:'stimmt ab',s_settle:'SWR-Messung',s_stopping:'beende Tune',
+ res_ok:'OK',res_swr_high:'SWR zu hoch',res_tuner_failed:'Tuner meldet Fehlschlag',res_no_response:'Tuner antwortet nicht',
+ res_timeout:'Timeout',res_aborted:'Abgebrochen',res_stop_failed:'Stopp nicht bestätigt',
+ pw_unchanged:'unverändert',pw_none:'kein Passwort',pw_noprot:'kein Schutz',
+ saving:'Speichere…',saved:'Gespeichert',saved_reboot:'Gespeichert – Gerät startet neu…',save_err:'Fehler beim Speichern',
+ confirm_reboot:'Gerät neu starten?',rebooting:'Neustart…',
+ choose_file:'Bitte zuerst die Datei wählen.',tuning_wait:'Der Tuner stimmt gerade ab. Bitte warten.',
+ confirm_update:f=>`Firmware „${f}“ installieren? Das Gerät startet danach neu.`,
+ uploading:'Übertrage…',installed:'Installiert, Gerät startet neu…',upload_abort:'Übertragung abgebrochen.',error:'Fehler',
+ e_busy:'Der Tuner stimmt gerade ab.',e_no_partition:'Keine Update-Partition vorhanden.',e_bad_size:'Ungültige Dateigrösse.',
+ e_no_memory:'Zu wenig Speicher.',e_begin_failed:'Update kann nicht gestartet werden.',e_transfer_aborted:'Übertragung abgebrochen.',
+ e_not_firmware:'Die Datei ist keine Firmware für dieses Gerät.',e_wrong_project:'Die Firmware gehört zu einem anderen Projekt.',
+ e_write_failed:'Schreiben fehlgeschlagen.',e_corrupt:'Die Firmware ist beschädigt.',e_boot_failed:'Startpartition kann nicht gesetzt werden.'},
+en:{status:'Status',loading:'loading…',history:'Recent tuning runs',h_ago:'ago',h_freq:'Frequency',h_result:'Result',h_dur:'Duration',
+ settings:'Settings',wifi:'Wi-Fi',password:'Password',hostname:'Hostname<small>reachable as &lt;hostname&gt;.local</small>',all:'all',
+ tuner_iface:'Tuner (AH-4 interface)',
+ key_active:'KEY input active on<small>GPIO26: HIGH = standard interface (inverting transistor)</small>',
+ start_hold:'Hold START<small>ms after KEY becomes active</small>',
+ key_wait:'KEY wait time<small>ms from start, otherwise “no response”</small>',
+ tune_timeout:'Tune timeout<small>ms from start, then carrier off</small>',
+ swr_settle:'SWR measuring time<small>ms of carrier after tuning, 0 = no measurement</small>',
+ swr_max:'Max. SWR<small>0 = no check</small>',
+ web:'Web interface',web_pass:'Password<small>user “admin”</small>',web_pass_clear:'Remove password protection',
+ save:'Save',reboot:'Restart',update:'Firmware update',install:'Install',
+ update_hint:'Select a firmware file (<code>.bin</code>) and install it. The device restarts afterwards; settings are kept. If the new firmware does not start properly, the device automatically returns to the previous version.',
+ r_wifi:'Wi-Fi',r_ap:'Access point',r_tuner:'Tuner',r_key:'KEY line',r_uptime:'Uptime',r_device:'Device',
+ not_connected:'not connected',wait_ready:'connected, waiting for READY',no_server:'no server configured',no_answer:'no response',
+ active:'active',inactive:'inactive',none_yet:'none yet',
+ s_idle:'ready',s_wait_key:'waiting for tuner',s_tuning:'tuning',s_settle:'measuring SWR',s_stopping:'stopping tune',
+ res_ok:'OK',res_swr_high:'SWR too high',res_tuner_failed:'Tuner reports failure',res_no_response:'Tuner not responding',
+ res_timeout:'Timeout',res_aborted:'Aborted',res_stop_failed:'Stop not confirmed',
+ pw_unchanged:'unchanged',pw_none:'no password',pw_noprot:'no protection',
+ saving:'Saving…',saved:'Saved',saved_reboot:'Saved – device is restarting…',save_err:'Saving failed',
+ confirm_reboot:'Restart the device?',rebooting:'Restarting…',
+ choose_file:'Please select the file first.',tuning_wait:'The tuner is currently tuning. Please wait.',
+ confirm_update:f=>`Install firmware “${f}”? The device restarts afterwards.`,
+ uploading:'Uploading…',installed:'Installed, device is restarting…',upload_abort:'Upload aborted.',error:'Error',
+ e_busy:'The tuner is currently tuning.',e_no_partition:'No update partition available.',e_bad_size:'Invalid file size.',
+ e_no_memory:'Not enough memory.',e_begin_failed:'Update cannot be started.',e_transfer_aborted:'Upload aborted.',
+ e_not_firmware:'The file is not firmware for this device.',e_wrong_project:'The firmware belongs to a different project.',
+ e_write_failed:'Writing failed.',e_corrupt:'The firmware is corrupt.',e_boot_failed:'Boot partition cannot be set.'}};
 const $=id=>document.getElementById(id),F=$('f');
+const store={get(){try{return localStorage.getItem('lang')}catch(e){return null}},set(v){try{localStorage.setItem('lang',v)}catch(e){}}};
+let lang=store.get()||((navigator.language||'').toLowerCase().startsWith('de')?'de':'en');
+const T=k=>L[lang][k]??L.de[k]??k;
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const mhz=hz=>hz?(hz/1e6).toFixed(3)+' MHz':'–';
 const dur=s=>s<60?s+' s':s<3600?Math.floor(s/60)+' min':s<86400?Math.floor(s/3600)+' h':Math.floor(s/86400)+' d';
-const RES={ok:['OK','ok'],swr_high:['SWR zu hoch','err'],tuner_failed:['Tuner meldet Fehlschlag','err'],no_response:['Tuner antwortet nicht','err'],timeout:['Timeout','err'],aborted:['Abgebrochen','warn'],stop_failed:['Stopp nicht bestätigt','err']};
-const STATE={idle:'bereit',wait_key:'warte auf Tuner',tuning:'stimmt ab',settle:'SWR-Messung',stopping:'beende Tune'};
-let tuning=false,uploading=false;
+const RES={ok:'ok',swr_high:'err',tuner_failed:'err',no_response:'err',timeout:'err',aborted:'warn',stop_failed:'err'};
+let tuning=false,uploading=false,last=null,pw=null;
 const row=(k,v,c)=>`<dt>${k}</dt><dd${c?` class="${c}"`:''}>${v}</dd>`;
+function render(){
+ const s=last;if(!s)return;
+ const w=s.wifi,t=s.tci,u=s.tuner;
+ let h=row(T('r_wifi'),w.connected?`${esc(w.ssid)} · ${w.ip} · ${w.rssi} dBm`:T('not_connected'),w.connected?'ok':'err');
+ if(w.ap)h+=row(T('r_ap'),`${esc(w.ap_ssid)} · 192.168.4.1`,'warn');
+ h+=row('TCI',t.ready?`${esc(t.device)} · ${esc(t.protocol)}`:t.connected?T('wait_ready'):t.host?`${T('not_connected')} (${esc(t.host)}:${t.port})`:T('no_server'),t.ready?'ok':'err');
+ h+=row(T('r_tuner'),u.state=='idle'?T('s_idle'):`${T('s_'+u.state)} · TRX ${u.trx} · ${(u.elapsed_ms/1000).toFixed(1)} s`,u.state=='idle'?'':'warn');
+ h+=row(T('r_key'),u.key?T('active'):T('inactive'));
+ if(u.swr!==null)h+=row('SWR',u.swr.toFixed(2));
+ h+=row(T('r_uptime'),dur(s.uptime));
+ $('st').innerHTML=h;
+ $('hist').innerHTML=s.history.length?s.history.map(e=>
+  `<tr><td>${dur(e.ago_s)}</td><td>${e.trx}</td><td>${mhz(e.freq)}</td><td class="${RES[e.result]||''}">${esc(T('res_'+e.result))}</td><td>${e.swr===null?'–':e.swr.toFixed(2)}</td><td>${(e.duration_ms/1000).toFixed(1)} s</td></tr>`).join('')
+  :`<tr><td colspan="6">${T('none_yet')}</td></tr>`;
+}
+function placeholders(){
+ if(!pw)return;
+ F.wifi_pass.placeholder=pw.wifi?T('pw_unchanged'):T('pw_none');
+ F.web_pass.placeholder=pw.web?T('pw_unchanged'):T('pw_noprot');
+}
+function setLang(l){
+ lang=l;store.set(l);document.documentElement.lang=l;
+ document.querySelectorAll('[data-t]').forEach(e=>e.innerHTML=T(e.dataset.t));
+ document.querySelectorAll('#lang button').forEach(b=>b.classList.toggle('on',b.dataset.l==l));
+ render();placeholders();
+}
 async function status(){
  if(uploading)return;
  try{
-  const s=await(await fetch('/api/status')).json(),w=s.wifi,t=s.tci,u=s.tuner;
-  let h=row('WLAN',w.connected?`${esc(w.ssid)} · ${w.ip} · ${w.rssi} dBm`:'nicht verbunden',w.connected?'ok':'err');
-  if(w.ap)h+=row('Access-Point',`${esc(w.ap_ssid)} · 192.168.4.1`,'warn');
-  h+=row('TCI',t.ready?`${esc(t.device)} · ${esc(t.protocol)}`:t.connected?'verbunden, warte auf READY':t.host?`nicht verbunden (${esc(t.host)}:${t.port})`:'kein Server konfiguriert',t.ready?'ok':'err');
-  h+=row('Tuner',u.state=='idle'?'bereit':`${STATE[u.state]} · TRX ${u.trx} · ${(u.elapsed_ms/1000).toFixed(1)} s`,u.state=='idle'?'':'warn');
-  h+=row('KEY-Leitung',u.key?'aktiv':'inaktiv');
-  if(u.swr!==null)h+=row('SWR',u.swr.toFixed(2));
-  h+=row('Laufzeit',dur(s.uptime));
-  $('ver').textContent=s.fw;tuning=u.state!='idle';
-  $('st').innerHTML=h;
-  $('hist').innerHTML=s.history.length?s.history.map(e=>{const r=RES[e.result]||[e.result,''];
-   return `<tr><td>${dur(e.ago_s)}</td><td>${e.trx}</td><td>${mhz(e.freq)}</td><td class="${r[1]}">${r[0]}</td><td>${e.swr===null?'–':e.swr.toFixed(2)}</td><td>${(e.duration_ms/1000).toFixed(1)} s</td></tr>`}).join('')
-   :'<tr><td colspan="6">noch keine</td></tr>';
- }catch(e){$('st').innerHTML=row('Gerät','keine Antwort','err')}
+  last=await(await fetch('/api/status')).json();
+  $('ver').textContent=last.fw;tuning=last.tuner.state!='idle';
+  render();
+ }catch(e){$('st').innerHTML=row(T('r_device'),T('no_answer'),'err')}
 }
 async function load(){
  const s=await(await fetch('/api/settings')).json();
  for(const[k,v]of Object.entries(s)){const e=F.elements[k];if(e&&e.type!='password'&&e.type!='checkbox')e.value=v}
- F.wifi_pass.placeholder=s.wifi_pass_set?'unverändert':'kein Passwort';
- F.web_pass.placeholder=s.web_pass_set?'unverändert':'kein Schutz';
+ pw={wifi:s.wifi_pass_set,web:s.web_pass_set};placeholders();
 }
 F.onsubmit=async ev=>{
- ev.preventDefault();$('msg').textContent='Speichere…';
+ ev.preventDefault();$('msg').textContent=T('saving');
  try{
   const r=await(await fetch('/api/settings',{method:'POST',body:new URLSearchParams(new FormData(F))})).json();
-  $('msg').textContent=r.reboot?'Gespeichert – Gerät startet neu…':'Gespeichert';
+  $('msg').textContent=r.reboot?T('saved_reboot'):T('saved');
   F.wifi_pass.value=F.web_pass.value='';F.web_pass_clear.checked=false;
   if(!r.reboot)load();
- }catch(e){$('msg').textContent='Fehler beim Speichern'}
+ }catch(e){$('msg').textContent=T('save_err')}
 };
-$('rb').onclick=async()=>{if(confirm('Gerät neu starten?')){await fetch('/api/reboot',{method:'POST'});$('msg').textContent='Neustart…'}};
+$('rb').onclick=async()=>{if(confirm(T('confirm_reboot'))){await fetch('/api/reboot',{method:'POST'});$('msg').textContent=T('rebooting')}};
 const um=(t,c)=>{$('umsg').textContent=t;$('umsg').className=c||''};
 function waitReboot(){setTimeout(async()=>{try{await fetch('/api/status');location.reload()}catch(e){waitReboot()}},2000)}
 $('up').onclick=()=>{
  const f=$('fw').files[0];
- if(!f)return um('Bitte zuerst die Datei wählen.','err');
- if(tuning)return um('Der Tuner stimmt gerade ab. Bitte warten.','err');
- if(!confirm(`Firmware „${f.name}“ installieren? Das Gerät startet danach neu.`))return;
+ if(!f)return um(T('choose_file'),'err');
+ if(tuning)return um(T('tuning_wait'),'err');
+ if(!confirm(T('confirm_update')(f.name)))return;
  const x=new XMLHttpRequest(),pg=$('pg');
  const done=(t,c)=>{uploading=false;$('up').disabled=false;pg.hidden=true;um(t,c)};
  x.open('POST','/api/update');x.setRequestHeader('Content-Type','application/octet-stream');
- x.upload.onprogress=e=>{if(e.lengthComputable){pg.value=e.loaded/e.total;um(`Übertrage… ${Math.round(e.loaded/e.total*100)} %`)}};
- x.onload=()=>{if(x.status==200){pg.hidden=true;um('Installiert, Gerät startet neu…','ok');waitReboot()}else done('Fehler: '+(x.responseText||x.status),'err')};
- x.onerror=()=>done('Übertragung abgebrochen.','err');
- uploading=true;$('up').disabled=true;pg.value=0;pg.hidden=false;um('Übertrage…');x.send(f);
+ x.upload.onprogress=e=>{if(e.lengthComputable){pg.value=e.loaded/e.total;um(`${T('uploading')} ${Math.round(e.loaded/e.total*100)} %`)}};
+ x.onload=()=>{if(x.status==200){pg.hidden=true;um(T('installed'),'ok');waitReboot()}else{const k='e_'+x.responseText.trim();done(L[lang][k]?T(k):`${T('error')}: ${x.responseText||x.status}`,'err')}};
+ x.onerror=()=>done(T('upload_abort'),'err');
+ uploading=true;$('up').disabled=true;pg.value=0;pg.hidden=false;um(T('uploading'));x.send(f);
 };
-load();status();setInterval(status,1000);
+document.querySelectorAll('#lang button').forEach(b=>b.onclick=()=>setLang(b.dataset.l));
+setLang(lang);load();status();setInterval(status,1000);
 </script></body></html>

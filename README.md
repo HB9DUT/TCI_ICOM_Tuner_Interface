@@ -16,7 +16,7 @@ Towards the tuner, the interface takes the place of an ICOM radio. This makes it
 - **Firmware update via the web interface:** Automatically falls back to the previous firmware if the new one does not start.
 - **Reachable via mDNS:** at `http://tci-tuner.local/`.
 
-The web interface is in German.
+The web interface is available in English and German and follows the browser language; it can be switched at the top right.
 
 ## Requirements
 
@@ -41,15 +41,15 @@ TUNE:0,false; ◀────── stop, repeated until ExpertSDR3 confirms
 
 The tune carrier is already on as soon as TUNE is pressed. While tuning, the AH-4 checks that the power is between 5 and 15 W and aborts otherwise. Set the tune power in ExpertSDR3 to about 10 W. For other tuners, use the limits from their manual.
 
-| Result (web interface) | Meaning |
+| Result | Meaning |
 |---|---|
 | OK | Tuner done, SWR below the limit (or no check) |
-| SWR zu hoch (SWR too high) | Tuner done, measured SWR above "Max. SWR" |
-| Tuner meldet Fehlschlag (tuner reports failure) | Tuner briefly asserted KEY again after releasing it (no match found) |
-| Tuner antwortet nicht (tuner not responding) | KEY did not become active within the "Wartezeit auf KEY" (KEY wait time) after START |
-| Timeout | Tuner not done within the "Tune-Timeout" |
-| Abgebrochen (aborted) | TUNE ended in ExpertSDR3 or TCI connection lost |
-| Stopp nicht bestätigt (stop not confirmed) | ExpertSDR3 did not confirm `TUNE:false` after 6 attempts |
+| SWR too high | Tuner done, measured SWR above "Max. SWR" |
+| Tuner reports failure | Tuner briefly asserted KEY again after releasing it (no match found) |
+| Tuner not responding | KEY did not become active within the "KEY wait time" after START |
+| Timeout | Tuner not done within the "Tune timeout" |
+| Aborted | TUNE ended in ExpertSDR3 or TCI connection lost |
+| Stop not confirmed | ExpertSDR3 did not confirm `TUNE:false` after 6 attempts |
 
 ## Hardware
 
@@ -114,7 +114,7 @@ The pin assignment is in [src/hw_config.h](src/hw_config.h).
 
 - Connect a push button between KEY and GND.
 - **Success:** Press TUNE in ExpertSDR3, press the button within 2 s (the tuner is "tuning") and release it (done). Result: "OK".
-- **Failure:** After releasing, briefly press again within 100 ms. Result: "Tuner meldet Fehlschlag".
+- **Failure:** After releasing, briefly press again within 100 ms. Result: "Tuner reports failure".
 - **Making START visible:** An LED with a series resistor from +13.8 V to START lights up while START is active.
 
 ## Installation
@@ -133,7 +133,7 @@ On the first build, PlatformIO downloads ESP-IDF and the components listed in [s
 Once the firmware has been installed via USB, all further updates can be done over Wi-Fi:
 
 1. Run `pio run`. This creates `.pio/build/esp32dev/firmware.bin`.
-2. In the web interface, under **Firmware-Update**, select the file and click **Installieren** (install).
+2. In the web interface, under **Firmware update**, select the file and click **Install**.
 3. The interface writes the firmware to the free app partition and restarts. Settings are kept.
 
 Before writing, the interface checks that the file is firmware for this project. Updates are blocked while tuning is in progress. The new firmware is only marked valid once it reaches the web server at startup. If it crashes before that, the bootloader falls back to the previous firmware on the next restart (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`).
@@ -155,19 +155,19 @@ With password protection, add `-u admin:<password>`.
 
 ### Settings
 
-| Setting (web interface) | Default | Description |
+| Setting | Default | Description |
 |---|---|---|
-| WLAN SSID / Passwort | – | 2.4 GHz Wi-Fi; leave the password field empty to keep it unchanged |
+| Wi-Fi SSID / password | – | 2.4 GHz Wi-Fi; leave the password field empty to keep it unchanged |
 | Hostname | `tci-tuner` | Reachable as `<hostname>.local` |
-| TCI Host / Port | – / 40001 | Address of the ExpertSDR3 TCI server |
-| Transceiver | alle (all) | Which transceiver's TUNE to respond to |
-| KEY-Eingang aktiv bei (KEY input active on) | HIGH | Level at GPIO26 when the tuner asserts KEY |
-| START halten (hold START) | 250 ms | How long START stays active after KEY is asserted |
-| Wartezeit auf KEY (KEY wait time) | 2000 ms | From start; then result "Tuner antwortet nicht" |
-| Tune-Timeout | 20000 ms | From start; then the carrier is switched off |
-| SWR-Messzeit (SWR measuring time) | 300 ms | Keep the carrier on this long after tuning to measure the SWR (0 = no measurement) |
+| TCI host / port | – / 40001 | Address of the ExpertSDR3 TCI server |
+| Transceiver | all | Which transceiver's TUNE to respond to |
+| KEY input active on | HIGH | Level at GPIO26 when the tuner asserts KEY |
+| Hold START | 250 ms | How long START stays active after KEY is asserted |
+| KEY wait time | 2000 ms | From start; then result "Tuner not responding" |
+| Tune timeout | 20000 ms | From start; then the carrier is switched off |
+| SWR measuring time | 300 ms | Keep the carrier on this long after tuning to measure the SWR (0 = no measurement) |
 | Max. SWR | 2.0 | Limit for the SWR check (0 = no check) |
-| Web password | – | Protects the web interface (user `admin`) |
+| Web interface password | – | Protects the web interface (user `admin`) |
 
 Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a restart.
 
@@ -207,7 +207,7 @@ Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a re
 | `src/tuner.*` | AH-4 state machine with timeouts, failure detection, SWR check, history |
 | `src/network.*` | Wi-Fi, access point fallback, captive portal (DHCP option 114), mDNS |
 | `src/dns_server.*` | DNS server for the captive portal |
-| `src/web_ui.*`, `src/index.html` | Web interface, JSON API and firmware update (`esp_http_server`, `app_update`) |
+| `src/web_ui.*`, `src/index.html` | Web interface (English/German), JSON API and firmware update (`esp_http_server`, `app_update`) |
 | `src/settings.*` | Settings in NVS |
 | `src/hw_config.h` | Pin assignment |
 | `sdkconfig.defaults` | ESP-IDF configuration |

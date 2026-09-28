@@ -1,5 +1,5 @@
 # NVS an derselben Stelle wie bei der Arduino-Version, damit gespeicherte Einstellungen erhalten bleiben.
-# Zwei App-Partitionen lassen Platz für spätere OTA-Updates.
+# Zwei App-Partitionen für Updates über die Weboberfläche (OTA).
 # Name,   Type, SubType, Offset,   Size
 nvs,      data, nvs,     0x9000,   0x5000,
 otadata,  data, ota,     0xe000,   0x2000,

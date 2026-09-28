@@ -1,4 +1,4 @@
-// TCI ICOM Tuner Interface – steuert einen Tuner mit ICOM-AH-4-Schnittstelle
+// TCI to ICOM Tuner Interface – steuert einen Tuner mit ICOM-AH-4-Schnittstelle
 // (z.B. ICOM AH-4, Stockcorner) anhand der TUNE-Befehle von ExpertSDR3 (TCI).
 //
 // Die Anwendungslogik läuft in einer Hauptschleife (5-ms-Takt). Der WebSocket-Client
@@ -7,6 +7,7 @@
 #include "app_util.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
+#include "esp_ota_ops.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -49,13 +50,24 @@ void initNvs() {
     ESP_ERROR_CHECK(err);
 }
 
+// Nach einem Update startet die neue Firmware im Prüfzustand. Erreicht sie den
+// Webserver, gilt sie als gültig; sonst kehrt der Bootloader zur alten zurück.
+void confirmFirmware() {
+    esp_ota_img_states_t state;
+    if (esp_ota_get_state_partition(esp_ota_get_running_partition(), &state) == ESP_OK &&
+        state == ESP_OTA_IMG_PENDING_VERIFY) {
+        esp_ota_mark_app_valid_cancel_rollback();
+        ESP_LOGI(TAG, "neue Firmware bestätigt");
+    }
+}
+
 }  // namespace
 
 extern "C" void app_main() {
     tuner.begin();  // START-Leitung sofort in den inaktiven Zustand
     led.begin();
 
-    ESP_LOGI(TAG, "TCI ICOM Tuner Interface, Firmware %s", esp_app_get_description()->version);
+    ESP_LOGI(TAG, "TCI to ICOM Tuner Interface, Firmware %s", esp_app_get_description()->version);
     initNvs();
     settings.load();
 
@@ -65,7 +77,7 @@ extern "C" void app_main() {
 
     net::begin(settings);
     tci.configure(settings.tciHost, settings.tciPort);
-    web.begin();
+    if (web.begin()) confirmFirmware();
 
     for (;;) {
         {

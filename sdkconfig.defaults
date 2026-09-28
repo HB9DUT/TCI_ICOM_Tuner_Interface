@@ -3,6 +3,10 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
+# Update über die Weboberfläche: Startet eine neue Firmware nicht bis zum
+# Webserver, kehrt der Bootloader beim nächsten Reset zur vorherigen zurück.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
 # 1-ms-Tick für die Hauptschleife (5-ms-Takt)
 CONFIG_FREERTOS_HZ=1000
 

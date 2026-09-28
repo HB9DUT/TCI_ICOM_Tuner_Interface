@@ -1,4 +1,4 @@
-# TCI ICOM Tuner Interface
+# TCI to ICOM Tuner Interface
 
 ESP32-Firmware, die einen automatischen Antennentuner mit **ICOM-AH-4-Schnittstelle** an ein SDR mit **ExpertSDR3** anbindet. Drückt man in ExpertSDR3 auf TUNE, startet das Interface den Tuner, wartet auf das Ende der Abstimmung, prüft das SWR und schaltet den Tune-Träger wieder ab.
 
@@ -13,6 +13,7 @@ Das Interface übernimmt dabei gegenüber dem Tuner die Rolle eines ICOM-Funkger
 - **Weboberfläche:** Status, die letzten 10 Abstimmungen mit Frequenz, Ergebnis, SWR und Dauer, dazu alle Einstellungen. Optional mit Passwortschutz.
 - **Einrichtung ohne Programmierung:** Ohne WLAN startet ein Access-Point mit Konfigurationsseite (Captive Portal).
 - **Status-LED:** Zeigt WLAN, TCI-Verbindung, laufende Abstimmung und Fehler.
+- **Firmware-Update über die Weboberfläche:** mit automatischer Rückkehr zur alten Firmware, falls die neue nicht startet.
 - **Erreichbar per mDNS:** unter `http://tci-tuner.local/`.
 
 ## Voraussetzungen
@@ -125,6 +126,24 @@ pio device monitor
 
 Beim ersten Build lädt PlatformIO ESP-IDF und die Komponenten aus [src/idf_component.yml](src/idf_component.yml) herunter (`esp_websocket_client`, `mdns`). Die genauen Versionen stehen in [dependencies.lock](dependencies.lock).
 
+### Update über die Weboberfläche
+
+Ist die Firmware einmal per USB installiert, geht jedes weitere Update auch über das WLAN:
+
+1. `pio run` ausführen. Die Datei `.pio/build/esp32dev/firmware.bin` entsteht.
+2. Auf der Weboberfläche unter **Firmware-Update** die Datei wählen und **Installieren** klicken.
+3. Das Interface schreibt die Firmware in die freie App-Partition und startet neu. Die Einstellungen bleiben erhalten.
+
+Das Interface prüft vor dem Schreiben, ob die Datei eine Firmware dieses Projekts ist. Während einer Abstimmung ist kein Update möglich. Die neue Firmware gilt erst als gültig, wenn sie beim Start den Webserver erreicht. Stürzt sie vorher ab, kehrt der Bootloader beim nächsten Neustart zur bisherigen Firmware zurück (`CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`).
+
+Wer per curl aktualisieren will:
+
+```
+curl -H "Content-Type: application/octet-stream" --data-binary @.pio/build/esp32dev/firmware.bin http://tci-tuner.local/api/update
+```
+
+Mit Passwortschutz kommt `-u admin:<passwort>` dazu.
+
 ## Einrichtung
 
 1. **Access-Point:** Nach dem ersten Start, oder wenn 30 s lang keine WLAN-Verbindung zustande kommt, öffnet das Interface den Access-Point `TCI-Tuner-XXXX` mit dem Passwort `tci-tuner`.
@@ -158,6 +177,7 @@ Die Tuner-Einstellungen wirken sofort. Änderungen an WLAN oder Hostname führen
 | GET | `/api/settings` | Einstellungen (ohne Passwörter) |
 | POST | `/api/settings` | Einstellungen ändern (`application/x-www-form-urlencoded`) |
 | POST | `/api/reboot` | Neustart |
+| POST | `/api/update` | Firmware-Update, Body ist die `firmware.bin` (`application/octet-stream`) |
 
 ## Status-LED
 
@@ -185,11 +205,11 @@ Die Tuner-Einstellungen wirken sofort. Änderungen an WLAN oder Hostname führen
 | `src/tuner.*` | AH-4-Zustandsmaschine mit Timeouts, Fehlschlag-Erkennung, SWR-Prüfung, Verlauf |
 | `src/network.*` | WLAN, Access-Point-Fallback, Captive Portal (DHCP-Option 114), mDNS |
 | `src/dns_server.*` | DNS-Server für das Captive Portal |
-| `src/web_ui.*`, `src/index.html` | Weboberfläche und JSON-API (`esp_http_server`) |
+| `src/web_ui.*`, `src/index.html` | Weboberfläche, JSON-API und Firmware-Update (`esp_http_server`, `app_update`) |
 | `src/settings.*` | Einstellungen im NVS |
 | `src/hw_config.h` | Pin-Zuordnung |
 | `sdkconfig.defaults` | ESP-IDF-Konfiguration |
-| `partitions.csv` | Partitionstabelle mit zwei App-Partitionen (Platz für OTA-Updates) |
+| `partitions.csv` | Partitionstabelle mit zwei App-Partitionen für Updates über die Weboberfläche |
 
 Die Anwendungslogik läuft in einer einzigen Hauptschleife. Der WebSocket-Client übergibt seine Ereignisse über eine Queue, die HTTP-Handler sperren einen gemeinsamen Mutex (`appMutex()`).
 
@@ -198,3 +218,7 @@ Die Anwendungslogik läuft in einer einzigen Hauptschleife. Der WebSocket-Client
 - [ExpertSDR3 TCI-Protokoll](https://github.com/ExpertSDR3/TCI)
 - K9EQ: [Inside the Icom AH-4 Tuner](https://www.hamoperator.com/HF/AH-4_Design_and_Operation.pdf) (Ablauf, Pegel, Fehlschlag-Signal)
 - K9EQ: [AH-4 Universal Interface](https://www.hamoperator.com/Hamoperator/AH-4_Universal_Interface_files/ah4-manual-5.pdf)
+
+## Copyright
+
+© 2026 HB9DUT

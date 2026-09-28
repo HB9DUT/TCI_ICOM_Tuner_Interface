@@ -260,7 +260,7 @@ void net::begin(const Settings& settings) {
 
     if (mdns_init() == ESP_OK) {
         mdns_hostname_set(cfg->hostname.c_str());
-        mdns_instance_name_set("TCI ICOM Tuner Interface");
+        mdns_instance_name_set("TCI to ICOM Tuner Interface");
         mdns_service_add(nullptr, "_http", "_tcp", 80, nullptr, 0);
     }
 

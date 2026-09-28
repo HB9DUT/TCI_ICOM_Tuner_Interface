@@ -5,13 +5,16 @@
 #include <cstdlib>
 #include <cstring>
 #include <limits>
+#include <memory>
 #include <string>
 
 #include "app_util.h"
 #include "cJSON.h"
 #include "esp_app_desc.h"
+#include "esp_app_format.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_ota_ops.h"
 #include "lwip/sockets.h"
 #include "mbedtls/base64.h"
 #include "network.h"
@@ -25,6 +28,8 @@ constexpr const char* TAG = "web";
 constexpr const char* WEB_USER = "admin";
 constexpr uint32_t REBOOT_DELAY_MS = 1000;
 constexpr size_t MAX_BODY = 2048;
+constexpr size_t OTA_CHUNK = 4096;
+constexpr int OTA_MAX_TIMEOUTS = 3;
 
 WebUi* self(httpd_req_t* req) { return static_cast<WebUi*>(req->user_ctx); }
 
@@ -105,15 +110,77 @@ uint32_t localAddress(httpd_req_t* req) {
     return 0;
 }
 
+// Liest genau len Bytes des Bodys; false bei Abbruch der Verbindung.
+bool recvExact(httpd_req_t* req, char* buf, size_t len) {
+    int timeouts = 0;
+    for (size_t got = 0; got < len;) {
+        const int n = httpd_req_recv(req, buf + got, len - got);
+        if (n == HTTPD_SOCK_ERR_TIMEOUT && ++timeouts <= OTA_MAX_TIMEOUTS) continue;
+        if (n <= 0) return false;
+        timeouts = 0;
+        got += n;
+    }
+    return true;
+}
+
+// Prüft anhand des App-Deskriptors im ersten Block, ob die Datei eine Firmware
+// dieses Projekts ist (und nicht etwa die eines anderen ESP32-Geräts).
+const char* checkImage(const char* data, size_t len) {
+    constexpr size_t offset = sizeof(esp_image_header_t) + sizeof(esp_image_segment_header_t);
+    if (len < offset + sizeof(esp_app_desc_t) || static_cast<uint8_t>(data[0]) != ESP_IMAGE_HEADER_MAGIC) {
+        return "Datei ist keine ESP32-Firmware";
+    }
+    esp_app_desc_t desc;
+    memcpy(&desc, data + offset, sizeof(desc));
+    if (desc.magic_word != ESP_APP_DESC_MAGIC_WORD) return "Datei ist keine ESP32-Firmware";
+    if (strncmp(desc.project_name, esp_app_get_description()->project_name, sizeof(desc.project_name)) != 0) {
+        return "Firmware gehört zu einem anderen Projekt";
+    }
+    ESP_LOGI(TAG, "Update auf Firmware %s", desc.version);
+    return nullptr;
+}
+
+// Schreibt den Body in die freie App-Partition und macht sie zur Startpartition.
+// Liefert nullptr bei Erfolg, sonst eine Fehlermeldung.
+const char* receiveFirmware(httpd_req_t* req) {
+    const esp_partition_t* part = esp_ota_get_next_update_partition(nullptr);
+    if (!part) return "keine Update-Partition";
+    if (req->content_len == 0 || req->content_len > part->size) return "ungültige Dateigrösse";
+
+    std::unique_ptr<char[]> buf(new (std::nothrow) char[OTA_CHUNK]);
+    if (!buf) return "zu wenig Speicher";
+    esp_ota_handle_t ota = 0;
+    if (esp_ota_begin(part, OTA_WITH_SEQUENTIAL_WRITES, &ota) != ESP_OK) return "Update kann nicht gestartet werden";
+
+    const char* error = nullptr;
+    for (size_t done = 0; done < req->content_len && !error;) {
+        const size_t len = std::min(OTA_CHUNK, req->content_len - done);
+        if (!recvExact(req, buf.get(), len)) {
+            error = "Übertragung abgebrochen";
+            break;
+        }
+        if (done == 0) error = checkImage(buf.get(), len);
+        if (!error && esp_ota_write(ota, buf.get(), len) != ESP_OK) error = "Schreiben fehlgeschlagen";
+        done += len;
+    }
+    if (error) {
+        esp_ota_abort(ota);
+        return error;
+    }
+    if (esp_ota_end(ota) != ESP_OK) return "Firmware ist beschädigt";
+    if (esp_ota_set_boot_partition(part) != ESP_OK) return "Startpartition kann nicht gesetzt werden";
+    return nullptr;
+}
+
 }  // namespace
 
-void WebUi::begin() {
+bool WebUi::begin() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.stack_size = 6144;
     config.lru_purge_enable = true;  // Captive-Portal-Prüfungen öffnen viele Verbindungen
     if (httpd_start(&server_, &config) != ESP_OK) {
         ESP_LOGE(TAG, "HTTP-Server konnte nicht gestartet werden");
-        return;
+        return false;
     }
 
     const httpd_uri_t routes[] = {
@@ -122,9 +189,11 @@ void WebUi::begin() {
         {"/api/settings", HTTP_GET, handleGetSettings, this},
         {"/api/settings", HTTP_POST, handlePostSettings, this},
         {"/api/reboot", HTTP_POST, handleReboot, this},
+        {"/api/update", HTTP_POST, handleUpdate, this},
     };
     for (const httpd_uri_t& r : routes) httpd_register_uri_handler(server_, &r);
     httpd_register_err_handler(server_, HTTPD_404_NOT_FOUND, handleNotFound);
+    return true;
 }
 
 bool WebUi::rebootDue() const {
@@ -150,7 +219,7 @@ bool WebUi::authorized(httpd_req_t* req) {
         }
     }
     httpd_resp_set_status(req, "401 Unauthorized");
-    httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"TCI ICOM Tuner Interface\"");
+    httpd_resp_set_hdr(req, "WWW-Authenticate", "Basic realm=\"TCI to ICOM Tuner Interface\"");
     httpd_resp_sendstr(req, "Anmeldung erforderlich");
     return false;
 }
@@ -291,6 +360,27 @@ esp_err_t WebUi::handleReboot(httpd_req_t* req) {
     std::lock_guard<std::recursive_mutex> lock(appMutex());
     if (!self(req)->authorized(req)) return ESP_OK;
     self(req)->scheduleReboot();
+    cJSON* root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "ok", true);
+    return sendJson(req, root);
+}
+
+// Firmware-Update: Body ist die firmware.bin (application/octet-stream).
+// Der Empfang läuft ohne appMutex, damit Hauptschleife und Tuner weiterarbeiten.
+esp_err_t WebUi::handleUpdate(httpd_req_t* req) {
+    WebUi& ui = *self(req);
+    {
+        std::lock_guard<std::recursive_mutex> lock(appMutex());
+        if (!ui.authorized(req)) return ESP_OK;
+        if (ui.tuner_.busy()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Tuner stimmt gerade ab");
+    }
+    const char* error = receiveFirmware(req);
+    if (error) {
+        ESP_LOGE(TAG, "Update fehlgeschlagen: %s", error);
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, error);
+    }
+    ESP_LOGI(TAG, "Update geschrieben, starte neu");
+    ui.scheduleReboot();
     cJSON* root = cJSON_CreateObject();
     cJSON_AddBoolToObject(root, "ok", true);
     return sendJson(req, root);

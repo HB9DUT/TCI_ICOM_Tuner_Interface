@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TCI ICOM Tuner Interface</title>
+<title>TCI to ICOM Tuner Interface</title>
 <style>
 :root{--bg:#f4f5f7;--card:#fff;--fg:#1d2330;--muted:#687083;--line:#dde1e8;--acc:#1f6feb;--ok:#1a7f37;--warn:#9a6700;--err:#cf222e}
 @media(prefers-color-scheme:dark){:root{--bg:#0f1218;--card:#181c24;--fg:#e6e9ef;--muted:#8b93a5;--line:#2a303c;--acc:#4c8dff;--ok:#3fb950;--warn:#d29922;--err:#f85149}}
@@ -21,10 +21,13 @@ input,select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radi
 input[type=checkbox]{width:auto;justify-self:start}
 button{padding:8px 16px;border:0;border-radius:6px;background:var(--acc);color:#fff;font:inherit;cursor:pointer}
 button.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
-.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}#msg{color:var(--muted)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}#msg,#umsg{color:var(--muted)}
+.hint{color:var(--muted);font-size:13px;margin:0 0 10px}code{font-size:12px}
+input[type=file]{width:auto;flex:1;min-width:0}progress{width:100%;margin-top:10px}
+footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 12px}
 @media(max-width:520px){label{grid-template-columns:1fr;gap:4px}}
 </style></head><body><main>
-<h1>TCI ICOM Tuner Interface</h1>
+<h1>TCI to ICOM Tuner Interface</h1>
 <section><h2>Status</h2><dl id="st"><dt>Status</dt><dd>lade…</dd></dl></section>
 <section><h2>Letzte Abstimmungen</h2><div class="scroll"><table>
 <thead><tr><th>vor</th><th>TRX</th><th>Frequenz</th><th>Ergebnis</th><th>SWR</th><th>Dauer</th></tr></thead>
@@ -54,6 +57,12 @@ button.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
 </fieldset>
 <div class="row"><button>Speichern</button><button type="button" class="sec" id="rb">Neustart</button><span id="msg"></span></div>
 </form></section>
+<section><h2>Firmware-Update</h2>
+<p class="hint">Firmware-Datei (<code>.bin</code>) wählen und installieren. Das Gerät startet danach neu, die Einstellungen bleiben erhalten. Falls die neue Firmware nicht richtig startet, kehrt das Gerät automatisch zur bisherigen Version zurück.</p>
+<div class="row"><input type="file" id="fw" accept=".bin"><button type="button" id="up">Installieren</button></div>
+<progress id="pg" max="1" value="0" hidden></progress><div id="umsg"></div>
+</section>
+<footer>TCI to ICOM Tuner Interface · Firmware <span id="ver">–</span> · © 2026 HB9DUT</footer>
 </main><script>
 const $=id=>document.getElementById(id),F=$('f');
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -61,8 +70,10 @@ const mhz=hz=>hz?(hz/1e6).toFixed(3)+' MHz':'–';
 const dur=s=>s<60?s+' s':s<3600?Math.floor(s/60)+' min':s<86400?Math.floor(s/3600)+' h':Math.floor(s/86400)+' d';
 const RES={ok:['OK','ok'],swr_high:['SWR zu hoch','err'],tuner_failed:['Tuner meldet Fehlschlag','err'],no_response:['Tuner antwortet nicht','err'],timeout:['Timeout','err'],aborted:['Abgebrochen','warn'],stop_failed:['Stopp nicht bestätigt','err']};
 const STATE={idle:'bereit',wait_key:'warte auf Tuner',tuning:'stimmt ab',settle:'SWR-Messung',stopping:'beende Tune'};
+let tuning=false,uploading=false;
 const row=(k,v,c)=>`<dt>${k}</dt><dd${c?` class="${c}"`:''}>${v}</dd>`;
 async function status(){
+ if(uploading)return;
  try{
   const s=await(await fetch('/api/status')).json(),w=s.wifi,t=s.tci,u=s.tuner;
   let h=row('WLAN',w.connected?`${esc(w.ssid)} · ${w.ip} · ${w.rssi} dBm`:'nicht verbunden',w.connected?'ok':'err');
@@ -71,7 +82,8 @@ async function status(){
   h+=row('Tuner',u.state=='idle'?'bereit':`${STATE[u.state]} · TRX ${u.trx} · ${(u.elapsed_ms/1000).toFixed(1)} s`,u.state=='idle'?'':'warn');
   h+=row('KEY-Leitung',u.key?'aktiv':'inaktiv');
   if(u.swr!==null)h+=row('SWR',u.swr.toFixed(2));
-  h+=row('Laufzeit',`${dur(s.uptime)} · Firmware ${esc(s.fw)}`);
+  h+=row('Laufzeit',dur(s.uptime));
+  $('ver').textContent=s.fw;tuning=u.state!='idle';
   $('st').innerHTML=h;
   $('hist').innerHTML=s.history.length?s.history.map(e=>{const r=RES[e.result]||[e.result,''];
    return `<tr><td>${dur(e.ago_s)}</td><td>${e.trx}</td><td>${mhz(e.freq)}</td><td class="${r[1]}">${r[0]}</td><td>${e.swr===null?'–':e.swr.toFixed(2)}</td><td>${(e.duration_ms/1000).toFixed(1)} s</td></tr>`}).join('')
@@ -94,5 +106,20 @@ F.onsubmit=async ev=>{
  }catch(e){$('msg').textContent='Fehler beim Speichern'}
 };
 $('rb').onclick=async()=>{if(confirm('Gerät neu starten?')){await fetch('/api/reboot',{method:'POST'});$('msg').textContent='Neustart…'}};
+const um=(t,c)=>{$('umsg').textContent=t;$('umsg').className=c||''};
+function waitReboot(){setTimeout(async()=>{try{await fetch('/api/status');location.reload()}catch(e){waitReboot()}},2000)}
+$('up').onclick=()=>{
+ const f=$('fw').files[0];
+ if(!f)return um('Bitte zuerst die Datei wählen.','err');
+ if(tuning)return um('Der Tuner stimmt gerade ab. Bitte warten.','err');
+ if(!confirm(`Firmware „${f.name}“ installieren? Das Gerät startet danach neu.`))return;
+ const x=new XMLHttpRequest(),pg=$('pg');
+ const done=(t,c)=>{uploading=false;$('up').disabled=false;pg.hidden=true;um(t,c)};
+ x.open('POST','/api/update');x.setRequestHeader('Content-Type','application/octet-stream');
+ x.upload.onprogress=e=>{if(e.lengthComputable){pg.value=e.loaded/e.total;um(`Übertrage… ${Math.round(e.loaded/e.total*100)} %`)}};
+ x.onload=()=>{if(x.status==200){pg.hidden=true;um('Installiert, Gerät startet neu…','ok');waitReboot()}else done('Fehler: '+(x.responseText||x.status),'err')};
+ x.onerror=()=>done('Übertragung abgebrochen.','err');
+ uploading=true;$('up').disabled=true;pg.value=0;pg.hidden=false;um('Übertrage…');x.send(f);
+};
 load();status();setInterval(status,1000);
 </script></body></html>

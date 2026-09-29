@@ -61,34 +61,7 @@ On the original setup, the pull-ups to 13.8 V are **inside the radio**. The inte
 
 No ESP32 pin connects directly to the tuner; both control lines go through a transistor.
 
-```
-Supply
-  +13.8 V ──[fuse 1 A]───────┬──────────────────────────── +13.8 V to tuner
-                             └──[buck 5 V]──────── 5V/VIN ESP32
-  GND ───────────────────────────────────────────── GND tuner and ESP32 (common)
-
-START (GPIO27 → tuner), GPIO27 HIGH = START active
-                                    +13.8 V
-                                       │
-                                     [4k7]  R2 (pull-up, replaces the radio's)
-                                       │
-  GPIO27 ──[4k7]──┬── B  Q1        C ──┴──────┬──── START
-             R1   │      BC547                ═ C1 10 nF
-                [100k] R3        E            │
-                  │              │            │
-  GND ────────────┴──────────────┴────────────┴──── GND
-
-KEY (tuner → GPIO26), GPIO26 HIGH = KEY active
-            +13.8 V                          +3.3 V
-               │                                │
-             [10k]  R4 (pull-up)              [10k] R7 (to 3.3 V only!)
-               │                                │
-  KEY ─────────┼──┬──[47k]──┬── B  Q2      C ───┴──── GPIO26
-                  ═ C2  R5  │      BC547
-                  │ 10 nF [10k] R6       E
-                  │         │            │
-  GND ────────────┴─────────┴────────────┴─────────── GND
-```
+![Schematic: AH-4 interface supply, START and KEY circuits](ah4_interface_schematic.svg)
 
 | State | START line | KEY line | GPIO26 |
 |---|---|---|---|
@@ -96,9 +69,6 @@ KEY (tuner → GPIO26), GPIO26 HIGH = KEY active
 | Interface starts tuning | GND (Q1 conducts) | | |
 | Tuner is tuning | | GND (tuner) | HIGH (Q2 off) |
 
-- R3 keeps Q1 off while GPIO27 is floating during boot, so no unintended START occurs.
-- R6 reliably turns Q2 off when the tuner pulls KEY to GND (residual voltage of the open collector).
-- Place C1 and C2 directly at the connector; they keep RF off the control lines.
 - With this circuit, KEY is active HIGH at the ESP32, which is the default. Without an inverting transistor in the KEY path, select "LOW" in the web interface.
 - The pinout and wire colours of the control cable are in the tuner's manual.
 

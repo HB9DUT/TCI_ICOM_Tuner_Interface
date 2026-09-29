@@ -1,5 +1,3 @@
-<meta name="google-site-verification" content="5R6_lfmufuwJd-h4ZsFU0t1xz8cFsewchcomLns-KqM" />
-
 # TCI to ICOM Tuner Interface
 
 ESP32 firmware that connects an automatic antenna tuner with an **ICOM AH-4 interface** to an SDR running **TCI-Protocol** like ExpertSDR. When you press TUNE in SDR Software, the interface starts the tuner, waits for tuning to finish, checks the SWR and switches the tune carrier off again.

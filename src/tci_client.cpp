@@ -7,6 +7,7 @@
 #include <cstring>
 #include <strings.h>
 
+#include "app_util.h"
 #include "esp_log.h"
 
 namespace {
@@ -45,7 +46,7 @@ void TciClient::loop(bool networkUp) {
         stop();
         if (host_.empty()) ESP_LOGW(TAG, "kein Server konfiguriert");
     }
-    if (networkUp && !client_ && !host_.empty()) {
+    if (networkUp && !client_ && !host_.empty() && millis() >= reconnectAtMs_) {
         start();
     } else if (!networkUp && client_) {
         stop();
@@ -106,6 +107,7 @@ void TciClient::stop() {
         std::lock_guard<std::mutex> lock(queueMutex_);
         queue_.clear();
     }
+    reconnectAtMs_ = 0;
     handleDisconnect();
 }
 
@@ -146,7 +148,15 @@ void TciClient::handleEvent(Event& e) {
             break;
 
         case Event::Type::Disconnected:
+            // Der Client-Task kann sich hier beenden (z.B. sauberer Close durch den
+            // Server), ohne selbst erneut zu verbinden. Client verwerfen, damit loop()
+            // nach RECONNECT_INTERVAL_MS einen neuen anlegt.
             handleDisconnect();
+            if (client_) {
+                esp_websocket_client_destroy(client_);
+                client_ = nullptr;
+            }
+            reconnectAtMs_ = millis() + RECONNECT_INTERVAL_MS;
             break;
 
         case Event::Type::Data: {

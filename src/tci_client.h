@@ -55,6 +55,7 @@ private:
     std::string host_;
     uint16_t port_ = 0;
     bool reconfigure_ = false;
+    uint32_t reconnectAtMs_ = 0;  // 0 = sofort verbinden
 
     std::mutex queueMutex_;
     std::deque<Event> queue_;

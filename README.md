@@ -6,7 +6,7 @@ Towards the tuner, the interface takes the place of an ICOM radio. This makes it
 
 ## Features
 
-- **Triggered by TUNE in SDR-Software:** Tuning starts automatically, and the connection re-establishes itself after an interruption.
+- **Triggered by TUNE in SDR-Software:** Tuning starts automatically, and the connection re-establishes itself within 5 s after an interruption, e.g. when the SDR software is restarted.
 - **AH-4 sequence:** Holds START until the tuner asserts KEY, then detects the end of tuning as well as the tuner's failure signal.
 - **Safety:** The tune carrier is switched off after an adjustable timeout at the latest, even if the tuner does not respond. The stop command is repeated until ExpertSDR3 confirms it.
 - **SWR check:** After tuning, the SWR is measured via the TX sensors of ExpertSDR3 and checked against a limit.

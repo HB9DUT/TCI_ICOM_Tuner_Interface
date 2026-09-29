@@ -6,11 +6,14 @@
 @media(prefers-color-scheme:dark){:root{--bg:#0f1218;--card:#181c24;--fg:#e6e9ef;--muted:#8b93a5;--line:#2a303c;--acc:#4c8dff;--ok:#3fb950;--warn:#d29922;--err:#f85149}}
 *{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,sans-serif;background:var(--bg);color:var(--fg)}
 main{max-width:760px;margin:0 auto;padding:16px}
-header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:4px 0 16px}
+header{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:4px 0 12px}
 h1{font-size:20px;margin:0}
 #lang{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;flex:none}
 #lang button{background:transparent;color:var(--muted);border-radius:0;padding:4px 10px;font-size:13px}
 #lang button.on{background:var(--acc);color:#fff}
+#tabs{display:flex;gap:8px;margin:0 0 16px}
+#tabs button{flex:1;background:var(--card);color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:9px;font:inherit;font-weight:600}
+#tabs button.on{background:var(--acc);color:#fff;border-color:var(--acc)}
 h2{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
 dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}
@@ -36,10 +39,14 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 12px}
 @media(max-width:520px){label{grid-template-columns:1fr;gap:4px}}
 </style></head><body><main>
 <header><h1>TCI to ICOM Tuner Interface</h1><div id="lang"><button type="button" data-l="de">DE</button><button type="button" data-l="en">EN</button></div></header>
+<nav id="tabs"><button type="button" class="on" data-tab="status" data-t="status">Status</button><button type="button" data-tab="settings" data-t="settings">Einstellungen</button></nav>
+<div id="tab-status">
 <section><h2 data-t="status">Status</h2><dl id="st"><dt data-t="status">Status</dt><dd data-t="loading">lade…</dd></dl></section>
 <section><h2 data-t="history">Letzte Abstimmungen</h2><div class="scroll"><table>
 <thead><tr><th data-t="h_ago">vor</th><th>TRX</th><th data-t="h_freq">Frequenz</th><th data-t="h_result">Ergebnis</th><th>SWR</th><th data-t="h_dur">Dauer</th></tr></thead>
 <tbody id="hist"></tbody></table></div></section>
+</div>
+<div id="tab-settings" hidden>
 <section><h2 data-t="settings">Einstellungen</h2><form id="f">
 <fieldset><legend data-t="wifi">WLAN</legend>
 <label><span>SSID</span><span class="ssid"><input name="wifi_ssid" maxlength="32"><button type="button" class="sec" id="scan" data-t="scan">Suchen</button></span></label>
@@ -71,6 +78,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 12px}
 <div class="row"><input type="file" id="fw" accept=".bin"><button type="button" id="up" data-t="install">Installieren</button></div>
 <progress id="pg" max="1" value="0" hidden></progress><div id="umsg"></div>
 </section>
+</div>
 <footer>TCI to ICOM Tuner Interface · Firmware <span id="ver">–</span> · © 2026 HB9DUT</footer>
 </main><script>
 const L={
@@ -142,7 +150,14 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const mhz=hz=>hz?(hz/1e6).toFixed(3)+' MHz':'–';
 const dur=s=>s<60?s+' s':s<3600?Math.floor(s/60)+' min':s<86400?Math.floor(s/3600)+' h':Math.floor(s/86400)+' d';
 const RES={ok:'ok',swr_high:'err',tuner_failed:'err',no_response:'err',timeout:'err',aborted:'warn',stop_failed:'err'};
-let tuning=false,uploading=false,autoScanned=false,last=null,pw=null;
+let tuning=false,uploading=false,autoScanned=false,last=null,pw=null,tab='status',tabPicked=false,settingsLoaded=false;
+function showTab(t){
+ tab=t;
+ $('tab-status').hidden=t!=='status';$('tab-settings').hidden=t!=='settings';
+ document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+ if(t==='settings'&&!settingsLoaded){settingsLoaded=true;load()}
+}
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{tabPicked=true;showTab(b.dataset.tab)});
 const row=(k,v,c)=>`<dt>${k}</dt><dd${c?` class="${c}"`:''}>${v}</dd>`;
 function render(){
  const s=last;if(!s)return;
@@ -190,7 +205,10 @@ async function status(){
  try{
   last=await(await fetch('/api/status')).json();
   $('ver').textContent=last.fw;tuning=last.tuner.state!='idle';
-  if(last.wifi.ap&&!last.wifi.connected&&!autoScanned){autoScanned=true;scan()}
+  if(last.wifi.ap&&!last.wifi.connected){
+   if(!tabPicked)showTab('settings');
+   if(!autoScanned){autoScanned=true;scan()}
+  }
   render();
  }catch(e){$('st').innerHTML=row(T('r_device'),T('no_answer'),'err')}
 }
@@ -225,5 +243,5 @@ $('up').onclick=()=>{
  uploading=true;$('up').disabled=true;pg.value=0;pg.hidden=false;um(T('uploading'));x.send(f);
 };
 document.querySelectorAll('#lang button').forEach(b=>b.onclick=()=>setLang(b.dataset.l));
-setLang(lang);load();status();setInterval(status,1000);
+setLang(lang);status();setInterval(status,1000);
 </script></body></html>

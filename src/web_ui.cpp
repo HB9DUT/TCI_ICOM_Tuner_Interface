@@ -226,9 +226,9 @@ bool WebUi::authorized(httpd_req_t* req) {
     return false;
 }
 
+// Seite und Status sind frei erreichbar (Status/Verlauf enthalten keine Zugangsdaten);
+// Einstellungen, WLAN-Suche und Update bleiben über authorized() geschützt.
 esp_err_t WebUi::handleIndex(httpd_req_t* req) {
-    std::lock_guard<std::recursive_mutex> lock(appMutex());
-    if (!self(req)->authorized(req)) return ESP_OK;
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     return httpd_resp_send(req, INDEX_HTML_START, INDEX_HTML_END - INDEX_HTML_START);
 }
@@ -236,7 +236,6 @@ esp_err_t WebUi::handleIndex(httpd_req_t* req) {
 esp_err_t WebUi::handleStatus(httpd_req_t* req) {
     std::lock_guard<std::recursive_mutex> lock(appMutex());
     WebUi& ui = *self(req);
-    if (!ui.authorized(req)) return ESP_OK;
     const uint32_t now = millis();
     const bool sta = net::staConnected();
 

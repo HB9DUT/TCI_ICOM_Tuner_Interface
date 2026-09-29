@@ -1,12 +1,12 @@
 # TCI to ICOM Tuner Interface
 
-ESP32 firmware that connects an automatic antenna tuner with an **ICOM AH-4 interface** to an SDR running **ExpertSDR3**. When you press TUNE in ExpertSDR3, the interface starts the tuner, waits for tuning to finish, checks the SWR and switches the tune carrier off again.
+ESP32 firmware that connects an automatic antenna tuner with an **ICOM AH-4 interface** to an SDR running **TCI-Protocol** like ExpertSDR. When you press TUNE in SDR Software, the interface starts the tuner, waits for tuning to finish, checks the SWR and switches the tune carrier off again.
 
-Towards the tuner, the interface takes the place of an ICOM radio. This makes it suitable for the ICOM AH-4 and compatible tuners such as the Stockcorner. The link to ExpertSDR3 uses the [TCI protocol](https://github.com/ExpertSDR3/TCI) (WebSocket) over Wi-Fi, so no cables to the SDR are needed.
+Towards the tuner, the interface takes the place of an ICOM radio. This makes it suitable for the ICOM AH-4 and compatible tuners such as the Stockcorner, GC-3000 or others. The link to SDR-Software uses the [TCI protocol](https://github.com/ExpertSDR3/TCI) (WebSocket) over Wi-Fi, so no cables to the SDR are needed.
 
 ## Features
 
-- **Triggered by TUNE in ExpertSDR3:** Tuning starts automatically, and the connection re-establishes itself after an interruption.
+- **Triggered by TUNE in SDR-Software:** Tuning starts automatically, and the connection re-establishes itself after an interruption.
 - **AH-4 sequence:** Holds START until the tuner asserts KEY, then detects the end of tuning as well as the tuner's failure signal.
 - **Safety:** The tune carrier is switched off after an adjustable timeout at the latest, even if the tuner does not respond. The stop command is repeated until ExpertSDR3 confirms it.
 - **SWR check:** After tuning, the SWR is measured via the TX sensors of ExpertSDR3 and checked against a limit.
@@ -39,7 +39,7 @@ TUNE:0,true;  ──────▶ START active ──────────�
 TUNE:0,false; ◀────── stop, repeated until ExpertSDR3 confirms
 ```
 
-The tune carrier is already on as soon as TUNE is pressed. While tuning, the AH-4 checks that the power is between 5 and 15 W and aborts otherwise. Set the tune power in ExpertSDR3 to about 10 W. For other tuners, use the limits from their manual.
+The tune carrier is already on as soon as TUNE is pressed. While tuning, the AH-4 checks that the power is between 5 and 15 W and aborts otherwise. Set the tune power in SDR-Software to about 10 W. For other tuners, use the limits from their manual.
 
 | Result | Meaning |
 |---|---|
@@ -145,7 +145,7 @@ The web installer can also be used for updates. Settings are kept unless you cho
 
 1. **Access point:** On first start, or if no Wi-Fi connection is established for 30 s, the interface opens the access point `TCI-Tuner-XXXX` with the password `tci-tuner`.
 2. **Configuration page:** After connecting, the page usually opens by itself; otherwise open `http://192.168.4.1/`. The `http://` matters: with an additional LAN connection or "Secure DNS" enabled in the browser, the automatic redirect in Windows otherwise ends up on the internet.
-3. **Enter settings:** Select the Wi-Fi network from the list (or click *Scan*), enter its password, plus TCI host (IP of the PC running ExpertSDR3) and port, then save. The interface restarts.
+3. **Enter settings:** Select the Wi-Fi network from the list (or click *Scan*), enter its password, plus TCI host (IP of the PC running SDR-Software) and port, then save. The interface restarts.
 4. **Operation:** The interface is then reachable at `http://tci-tuner.local/` or its IP address.
 
 ### Settings
@@ -154,7 +154,7 @@ The web installer can also be used for updates. Settings are kept unless you cho
 |---|---|---|
 | Wi-Fi SSID / password | – | 2.4 GHz Wi-Fi; leave the password field empty to keep it unchanged |
 | Hostname | `tci-tuner` | Reachable as `<hostname>.local` |
-| TCI host / port | – / 40001 | Address of the ExpertSDR3 TCI server |
+| TCI host / port | – / 40001 | Address of the SDR TCI server |
 | Transceiver | all | Which transceiver's TUNE to respond to |
 | KEY input active on | HIGH | Level at GPIO26 when the tuner asserts KEY |
 | Hold START | 250 ms | How long START stays active after KEY is asserted |
@@ -192,8 +192,6 @@ Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a re
 
 **WPA3:** WPA3 (SAE) is disabled in [sdkconfig.defaults](sdkconfig.defaults) because the ESP32's SAE handshake fails with some routers (`AUTH_EXPIRE`). On WPA2/WPA3 routers the interface therefore connects using WPA2; WPA3-only networks are not supported. If the Wi-Fi connection fails, the serial log shows a scan with the network's channel, signal strength and encryption.
 
-**WebSocket buffer:** Right after connecting, ExpertSDR3 sends a large block of initialisation data. The WebSocket transport buffer is therefore increased to 8 KB (`CONFIG_WS_BUFFER_SIZE`).
-
 ## Building from source
 
 ```
@@ -214,29 +212,6 @@ curl -H "Content-Type: application/octet-stream" --data-binary @.pio/build/esp32
 ```
 
 With password protection, add `-u admin:<password>`.
-
-### Releases
-
-Pushing a tag `v*` (e.g. `git tag v2.5.0 && git push origin v2.5.0`) starts the [release workflow](.github/workflows/release.yml). It builds the firmware, creates the GitHub release with `firmware.bin` and the full image, and publishes the web installer ([webflasher/](webflasher/)) to GitHub Pages.
-
-## Project structure
-
-| File | Content |
-|---|---|
-| `src/main.cpp` | Initialisation, main loop (5 ms), choice of LED pattern |
-| `src/tci_client.*` | TCI client (`esp_websocket_client`), handling of `tune`, `tx_sensors`, `vfo`, `ready` |
-| `src/tuner.*` | AH-4 state machine with timeouts, failure detection, SWR check, history |
-| `src/network.*` | Wi-Fi, access point fallback, captive portal (DHCP option 114), mDNS |
-| `src/dns_server.*` | DNS server for the captive portal |
-| `src/web_ui.*`, `src/index.html` | Web interface (English/German), JSON API and firmware update (`esp_http_server`, `app_update`) |
-| `src/settings.*` | Settings in NVS |
-| `src/hw_config.h` | Pin assignment |
-| `sdkconfig.defaults` | ESP-IDF configuration |
-| `partitions.csv` | Partition table with two app partitions for updates via the web interface |
-| `webflasher/` | Web installer page (ESP Web Tools), published with each release |
-| `.github/workflows/release.yml` | Builds releases and publishes the web installer |
-
-The application logic runs in a single main loop. The WebSocket client passes its events through a queue; the HTTP handlers lock a shared mutex (`appMutex()`).
 
 ## References
 

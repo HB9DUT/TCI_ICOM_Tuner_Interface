@@ -16,7 +16,7 @@ constexpr const char* TAG = "tuner";
 constexpr uint32_t LOOP_MS = 2;
 constexpr UBaseType_t TASK_PRIORITY = 10;  // über HTTP-Server und TCI
 constexpr BaseType_t TASK_CORE = 1;        // WLAN läuft auf Core 0
-constexpr uint32_t TASK_STACK = 4096;
+constexpr uint32_t TASK_STACK = 6144;
 constexpr UBaseType_t COMMAND_QUEUE_LEN = 16;
 constexpr UBaseType_t KEY_QUEUE_LEN = 64;
 constexpr TickType_t POST_TIMEOUT = pdMS_TO_TICKS(10);
@@ -227,10 +227,15 @@ void Tuner::handle(const Command& cmd, uint32_t now) {
                 break;
             }
             if (state_ == State::Idle || cmd.trx != trx_) break;
-            if (state_ != State::Stopping &&
-                (waitCarrierOff_ || static_cast<int32_t>(now - ignoreTuneOffUntilMs_) < 0)) {
-                if (waitCarrierOff_) tuneOffSeen_ = true;
-                break;  // Echo auf das eigene TUNE:false
+            if (state_ != State::Stopping && waitCarrierOff_) {
+                tuneOffSeen_ = true;  // Echo auf das eigene TUNE:false
+                break;
+            }
+            // Verspätetes Echo kommt bei laufendem Träger; ein echter Stopp in Thetis
+            // meldet zuerst TRX:false und wird nicht ignoriert.
+            if (state_ != State::Stopping && cmd.carrierOn &&
+                static_cast<int32_t>(now - ignoreTuneOffUntilMs_) < 0) {
+                break;
             }
             if (state_ == State::Stopping) {
                 finish(pendingResult_, now);

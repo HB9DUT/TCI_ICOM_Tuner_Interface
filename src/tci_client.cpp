@@ -180,7 +180,14 @@ void TciClient::wsEventHandler(void* arg, esp_event_base_t, int32_t id, void* ev
     }
 
     std::lock_guard<std::mutex> lock(self->queueMutex_);
-    if (self->queue_.size() < MAX_QUEUED_EVENTS || e.type != Event::Type::Data) self->queue_.push_back(std::move(e));
+    if (e.type == Event::Type::Data && self->queue_.size() >= MAX_QUEUED_EVENTS) {
+        // Daten verwerfen, aber die Lücke markieren: sonst setzt der Parser die
+        // Bruchstücke davor und danach zu einem falschen Befehl zusammen.
+        if (self->queue_.back().type == Event::Type::Lost) return;
+        e.type = Event::Type::Lost;
+        e.data.clear();
+    }
+    self->queue_.push_back(std::move(e));
 }
 
 void TciClient::handleEvent(Event& e) {
@@ -188,6 +195,7 @@ void TciClient::handleEvent(Event& e) {
         case Event::Type::Connected:
             connected_ = true;
             rx_.clear();
+            resync_ = false;
             ESP_LOGI(TAG, "verbunden, warte auf READY");
             break;
 
@@ -203,7 +211,20 @@ void TciClient::handleEvent(Event& e) {
             reconnectAtMs_ = millis() + RECONNECT_INTERVAL_MS;
             break;
 
+        case Event::Type::Lost:
+            ESP_LOGW(TAG, "Empfangsdaten verworfen, warte auf den nächsten Befehl");
+            rx_.clear();
+            resync_ = true;
+            break;
+
         case Event::Type::Data: {
+            if (resync_) {
+                // Rest des angeschnittenen Befehls überspringen
+                const size_t end = e.data.find(';');
+                if (end == std::string::npos) break;
+                e.data.erase(0, end + 1);
+                resync_ = false;
+            }
             // Befehle enden mit ';' und können über Frames verteilt sein.
             rx_ += e.data;
             size_t start = 0;
@@ -221,6 +242,7 @@ void TciClient::handleDisconnect() {
     if (connected_) ESP_LOGW(TAG, "Verbindung getrennt");
     connected_ = false;
     rx_.clear();
+    resync_ = false;
     {
         std::lock_guard<std::mutex> lock(infoMutex_);
         device_.clear();
@@ -261,7 +283,8 @@ void TciClient::handleCommand(const char* cmd, size_t len) {
     if (strcmp(name, "tune") == 0 && argc >= 2) {
         const int trx = atoi(argv[0]);
         const bool atConnect = !ready_ || millis() - readyAtMs_ < AT_CONNECT_WINDOW_MS;
-        // TRX jetzt lesen: deskHPSDR schickt TRX:true direkt hinter TUNE:true
+        // TRX jetzt lesen, nicht erst im Tuner-Task: deskHPSDR schickt TRX:true
+        // direkt hinter TUNE:true, Thetis TRX:false vor einem echten TUNE:false
         if (onTune) onTune(trx, parseBool(argv[1]), vfoHz(trx), atConnect, transmitting(trx));
     } else if (strcmp(name, "tx_sensors") == 0 && argc >= 5) {
         // tx_sensors:trx,mic_dbm,rms_w,peak_w,swr;

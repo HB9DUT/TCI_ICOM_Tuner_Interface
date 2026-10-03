@@ -23,7 +23,7 @@ public:
 
     std::function<void(bool ready)> onReady;
     // atConnect: TUNE wurde beim Verbindungsaufbau gemeldet, nicht durch eine neue Anforderung
-    // carrierOn: der Server hatte vor diesem TUNE schon TRX:true gemeldet (z.B. Thetis)
+    // carrierOn: beim Eintreffen dieses TUNE war laut TRX-Meldung gesendet worden
     std::function<void(int trx, bool on, uint32_t freqHz, bool atConnect, bool carrierOn)> onTune;
     std::function<void(int trx, float swr)> onTxSensors;
 
@@ -45,7 +45,7 @@ public:
 
 private:
     struct Event {
-        enum class Type : uint8_t { Connected, Disconnected, Data } type;
+        enum class Type : uint8_t { Connected, Disconnected, Data, Lost } type;
         std::string data;
     };
 
@@ -64,7 +64,8 @@ private:
     esp_websocket_client_handle_t client_ = nullptr;
     uint32_t reconnectAtMs_ = 0;  // nächster Verbindungsversuch frühestens dann
     uint32_t readyAtMs_ = 0;
-    std::string rx_;  // empfangene Daten ohne abschliessendes ';'
+    std::string rx_;       // empfangene Daten ohne abschliessendes ';'
+    bool resync_ = false;  // nach verworfenen Daten bis zum nächsten ';' überspringen
 
     std::mutex configMutex_;
     std::string host_;

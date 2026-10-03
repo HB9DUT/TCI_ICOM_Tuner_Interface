@@ -268,6 +268,13 @@ void show(Out& io) {
         io.printf("          SWR reading %u ms, no SWR check\n", c.swrSettleMs);
     }
     io.printf("Web       password %s\n", c.webPass.empty() ? "- (web and telnet open)" : "set");
+    io.puts("Stack     minimum free bytes:");
+    for (const char* name : {"tuner", "tci", "httpd", "console", "telnet"}) {
+        if (TaskHandle_t h = xTaskGetHandle(name)) {
+            io.printf(" %s %u", name, static_cast<unsigned>(uxTaskGetStackHighWaterMark(h)));
+        }
+    }
+    io.puts("\n");
     if (unsaved) io.puts("\nUnsaved changes - 'save' stores them, 'discard' drops them.\n");
 }
 

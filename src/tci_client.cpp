@@ -9,6 +9,9 @@
 
 #include "app_util.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "network.h"
 
 namespace {
 
@@ -22,6 +25,12 @@ constexpr TickType_t SEND_TIMEOUT = pdMS_TO_TICKS(500);
 constexpr size_t MAX_QUEUED_EVENTS = 64;
 constexpr size_t MAX_RX_BUFFER = 4096;
 constexpr int MAX_ARGS = 8;
+constexpr size_t MAX_OUTGOING = 32;
+constexpr uint32_t LOOP_MS = 5;
+constexpr UBaseType_t TASK_PRIORITY = 6;  // über dem HTTP-Server, unter dem Tuner
+constexpr uint32_t TASK_STACK = 6144;
+// TUNE:true so kurz nach READY stammt noch vom Verbindungsaufbau
+constexpr uint32_t AT_CONNECT_WINDOW_MS = 1000;
 
 char* trim(char* s) {
     while (isspace(static_cast<unsigned char>(*s))) ++s;
@@ -35,18 +44,37 @@ bool parseBool(const char* s) { return strcasecmp(s, "true") == 0; }
 }  // namespace
 
 void TciClient::configure(const std::string& host, uint16_t port) {
+    std::lock_guard<std::mutex> lock(configMutex_);
     host_ = host;
     port_ = port;
     reconfigure_ = true;
 }
 
-void TciClient::loop(bool networkUp) {
-    if (reconfigure_) {
-        reconfigure_ = false;
-        stop();
-        if (host_.empty()) ESP_LOGW(TAG, "kein Server konfiguriert");
+void TciClient::startTask() { xTaskCreate(taskEntry, "tci", TASK_STACK, this, TASK_PRIORITY, nullptr); }
+
+void TciClient::taskEntry(void* arg) {
+    auto* self = static_cast<TciClient*>(arg);
+    for (;;) {
+        self->loop(net::staConnected());
+        self->flushOutgoing();
+        vTaskDelay(pdMS_TO_TICKS(LOOP_MS));
     }
-    if (networkUp && !client_ && !host_.empty() && millis() >= reconnectAtMs_) {
+}
+
+void TciClient::loop(bool networkUp) {
+    bool hasHost;
+    bool reconfigure;
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        hasHost = !host_.empty();
+        reconfigure = reconfigure_;
+        reconfigure_ = false;
+    }
+    if (reconfigure) {
+        stop();
+        if (!hasHost) ESP_LOGW(TAG, "kein Server konfiguriert");
+    }
+    if (networkUp && !client_ && hasHost && static_cast<int32_t>(millis() - reconnectAtMs_) >= 0) {
         start();
     } else if (!networkUp && client_) {
         stop();
@@ -60,22 +88,36 @@ void TciClient::loop(bool networkUp) {
     for (Event& e : events) handleEvent(e);
 }
 
-uint32_t TciClient::vfoHz(int trx) const { return (trx >= 0 && trx < MAX_TRX) ? vfo_[trx] : 0; }
+uint32_t TciClient::vfoHz(int trx) const { return (trx >= 0 && trx < MAX_TRX) ? vfo_[trx].load() : 0; }
 
-void TciClient::setTune(int trx, bool on) { send("tune:%d,%s;", trx, on ? "true" : "false"); }
+std::string TciClient::device() const {
+    std::lock_guard<std::mutex> lock(infoMutex_);
+    return device_;
+}
 
-void TciClient::queryTune(int trx) { send("tune:%d;", trx); }
+std::string TciClient::protocol() const {
+    std::lock_guard<std::mutex> lock(infoMutex_);
+    return protocol_;
+}
+
+void TciClient::setTune(int trx, bool on) { enqueue("tune:%d,%s;", trx, on ? "true" : "false"); }
+
+void TciClient::queryTune(int trx) { enqueue("tune:%d;", trx); }
 
 void TciClient::setTxSensors(bool on, uint16_t intervalMs) {
     if (on) {
-        send("tx_sensors_enable:true,%u;", intervalMs);
+        enqueue("tx_sensors_enable:true,%u;", intervalMs);
     } else {
-        send("tx_sensors_enable:false;");
+        enqueue("tx_sensors_enable:false;");
     }
 }
 
 void TciClient::start() {
-    const std::string uri = "ws://" + host_ + ":" + std::to_string(port_) + "/";
+    std::string uri;
+    {
+        std::lock_guard<std::mutex> lock(configMutex_);
+        uri = "ws://" + host_ + ":" + std::to_string(port_) + "/";
+    }
     ESP_LOGI(TAG, "Server %s", uri.c_str());
 
     esp_websocket_client_config_t cfg = {};
@@ -107,7 +149,7 @@ void TciClient::stop() {
         std::lock_guard<std::mutex> lock(queueMutex_);
         queue_.clear();
     }
-    reconnectAtMs_ = 0;
+    reconnectAtMs_ = millis();  // sofort neu verbinden
     handleDisconnect();
 }
 
@@ -177,8 +219,16 @@ void TciClient::handleDisconnect() {
     if (connected_) ESP_LOGW(TAG, "Verbindung getrennt");
     connected_ = false;
     rx_.clear();
-    device_.clear();
-    protocol_.clear();
+    {
+        std::lock_guard<std::mutex> lock(infoMutex_);
+        device_.clear();
+        protocol_.clear();
+    }
+    // Nichts Veraltetes nach dem Wiederverbinden senden (z.B. ein TUNE:true)
+    {
+        std::lock_guard<std::mutex> lock(outMutex_);
+        out_.clear();
+    }
     setReady(false);
 }
 
@@ -206,7 +256,9 @@ void TciClient::handleCommand(const char* cmd, size_t len) {
     }
 
     if (strcmp(name, "tune") == 0 && argc >= 2) {
-        if (onTune) onTune(atoi(argv[0]), parseBool(argv[1]));
+        const int trx = atoi(argv[0]);
+        const bool atConnect = !ready_ || millis() - readyAtMs_ < AT_CONNECT_WINDOW_MS;
+        if (onTune) onTune(trx, parseBool(argv[1]), vfoHz(trx), atConnect);
     } else if (strcmp(name, "tx_sensors") == 0 && argc >= 5) {
         // tx_sensors:trx,mic_dbm,rms_w,peak_w,swr;
         if (onTxSensors) onTxSensors(atoi(argv[0]), strtof(argv[4], nullptr));
@@ -214,24 +266,52 @@ void TciClient::handleCommand(const char* cmd, size_t len) {
         const int trx = atoi(argv[0]);
         if (trx >= 0 && trx < MAX_TRX && atoi(argv[1]) == 0) vfo_[trx] = strtoul(argv[2], nullptr, 10);
     } else if (strcmp(name, "ready") == 0) {
-        ESP_LOGI(TAG, "bereit (%s, %s)", device_.c_str(), protocol_.c_str());
+        ESP_LOGI(TAG, "bereit (%s, %s)", device().c_str(), protocol().c_str());
+        readyAtMs_ = millis();
         setReady(true);
     } else if (strcmp(name, "device") == 0 && argc >= 1) {
+        std::lock_guard<std::mutex> lock(infoMutex_);
         device_ = argv[0];
     } else if (strcmp(name, "protocol") == 0 && argc >= 2) {
+        std::lock_guard<std::mutex> lock(infoMutex_);
         protocol_ = std::string(argv[0]) + " " + argv[1];
     }
 }
 
-void TciClient::send(const char* fmt, ...) {
-    if (!connected_ || !client_) return;
+void TciClient::enqueue(const char* fmt, ...) {
+    if (!connected_) return;
     char buf[64];
     va_list ap;
     va_start(ap, fmt);
     const int len = vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
     if (len <= 0 || static_cast<size_t>(len) >= sizeof(buf)) return;
-    if (esp_websocket_client_send_text(client_, buf, len, SEND_TIMEOUT) < 0) ESP_LOGW(TAG, "Senden fehlgeschlagen: %s", buf);
+    std::lock_guard<std::mutex> lock(outMutex_);
+    if (out_.size() >= MAX_OUTGOING) {
+        ESP_LOGW(TAG, "Sende-Queue voll, verworfen: %s", buf);
+        return;
+    }
+    out_.emplace_back(buf, len);
+}
+
+// Läuft im TCI-Task; nur hier wird gesendet (blockiert höchstens SEND_TIMEOUT je Befehl).
+void TciClient::flushOutgoing() {
+    for (;;) {
+        std::string cmd;
+        {
+            std::lock_guard<std::mutex> lock(outMutex_);
+            if (out_.empty()) return;
+            if (!connected_ || !client_) {
+                out_.clear();
+                return;
+            }
+            cmd = std::move(out_.front());
+            out_.pop_front();
+        }
+        if (esp_websocket_client_send_text(client_, cmd.data(), cmd.size(), SEND_TIMEOUT) < 0) {
+            ESP_LOGW(TAG, "Senden fehlgeschlagen: %s", cmd.c_str());
+        }
+    }
 }
 
 void TciClient::setReady(bool ready) {

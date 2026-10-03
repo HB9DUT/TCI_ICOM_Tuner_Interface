@@ -90,6 +90,15 @@ void Settings::save() const {
     }
 }
 
+void Settings::erase() {
+    nvs_handle_t h;
+    if (nvs_open(NS, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_erase_all(h);
+    nvs_commit(h);
+    nvs_close(h);
+    ESP_LOGI(TAG, "Einstellungen gelöscht");
+}
+
 void Settings::sanitize() {
     if (tciPort == 0) tciPort = 40001;
     if (tuneTrx < -1 || tuneTrx > 7) tuneTrx = -1;

@@ -34,6 +34,20 @@ constexpr int OTA_MAX_TIMEOUTS = 3;
 
 WebUi* self(httpd_req_t* req) { return static_cast<WebUi*>(req->user_ctx); }
 
+// Schutz gegen Anfragen fremder Webseiten (CSRF): Ein Formular oder Skript einer
+// anderen Seite kann diesen Header nicht setzen, ohne dass der Browser vorher per
+// CORS nachfragt, und diese Nachfrage beantwortet der Server nicht. Basic-Auth
+// allein schützt nicht, weil der Browser die Zugangsdaten automatisch mitschickt.
+// Die eigene Seite setzt den Header bei jeder Aktion.
+constexpr const char* API_HEADER = "X-TCI-Tuner";
+
+bool fromOwnPage(httpd_req_t* req) { return httpd_req_get_hdr_value_len(req, API_HEADER) > 0; }
+
+esp_err_t rejectForeign(httpd_req_t* req) {
+    httpd_resp_set_status(req, "403 Forbidden");
+    return httpd_resp_sendstr(req, "forbidden");
+}
+
 esp_err_t sendJson(httpd_req_t* req, cJSON* root) {
     char* text = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
@@ -204,7 +218,29 @@ bool WebUi::rebootDue() const {
     return at != 0 && static_cast<int32_t>(millis() - at) >= 0;
 }
 
-void WebUi::scheduleReboot() { rebootAtMs_ = (millis() + REBOOT_DELAY_MS) | 1; }
+// Sperrt neue Abstimmungen und beendet eine laufende; die Hauptschleife startet
+// erst neu, wenn der Tuner fertig ist.
+void WebUi::scheduleReboot() {
+    tuner_.setLock(Tuner::LOCK_REBOOT, true);
+    tuner_.requestStop();
+    rebootAtMs_ = (millis() + REBOOT_DELAY_MS) | 1;
+}
+
+// Speichert die Einstellungen und setzt sie um (auch für die Konsole).
+// Liefert true, wenn dafür ein Neustart nötig ist; der ist dann bereits geplant.
+// Aufruf mit gesperrtem appMutex().
+bool WebUi::applySettings(Settings n) {
+    n.sanitize();
+    const bool reboot = n.wifiSsid != cfg_.wifiSsid || n.wifiPass != cfg_.wifiPass || n.hostname != cfg_.hostname;
+    const bool tciChanged = n.tciHost != cfg_.tciHost || n.tciPort != cfg_.tciPort;
+
+    cfg_ = n;
+    cfg_.save();
+    tuner_.applyConfig(Tuner::Config::from(cfg_));
+    if (tciChanged && !reboot) tci_.configure(cfg_.tciHost, cfg_.tciPort);
+    if (reboot) scheduleReboot();
+    return reboot;
+}
 
 bool WebUi::authorized(httpd_req_t* req) {
     if (cfg_.webPass.empty()) return true;
@@ -260,17 +296,18 @@ esp_err_t WebUi::handleStatus(httpd_req_t* req) {
     cJSON_AddStringToObject(tci, "device", ui.tci_.device().c_str());
     cJSON_AddStringToObject(tci, "protocol", ui.tci_.protocol().c_str());
 
-    const Tuner& t = ui.tuner_;
+    const Tuner::Snapshot t = ui.tuner_.snapshot();
     cJSON* tuner = cJSON_AddObjectToObject(root, "tuner");
-    cJSON_AddStringToObject(tuner, "state", Tuner::stateId(t.state()));
-    cJSON_AddBoolToObject(tuner, "key", t.keyActive());
-    cJSON_AddNumberToObject(tuner, "trx", t.trx());
-    cJSON_AddNumberToObject(tuner, "elapsed_ms", t.elapsedMs());
-    addFloat(tuner, "swr", t.liveSwr(), 2);
+    cJSON_AddStringToObject(tuner, "state", Tuner::stateId(t.state));
+    cJSON_AddBoolToObject(tuner, "key", t.key);
+    cJSON_AddNumberToObject(tuner, "trx", t.trx);
+    cJSON_AddNumberToObject(tuner, "elapsed_ms", t.elapsedMs);
+    addFloat(tuner, "swr", t.liveSwr, 2);
+    cJSON_AddBoolToObject(tuner, "locked", ui.tuner_.locked());
 
     cJSON* history = cJSON_AddArrayToObject(root, "history");
-    for (size_t i = 0; i < t.historyCount(); ++i) {
-        const Tuner::Record& r = t.history(i);
+    for (size_t i = 0; i < t.historyCount; ++i) {
+        const Tuner::Record& r = t.history[i];
         cJSON* e = cJSON_CreateObject();
         cJSON_AddNumberToObject(e, "ago_s", (now - r.finishedMs) / 1000);
         cJSON_AddNumberToObject(e, "trx", r.trx);
@@ -307,6 +344,7 @@ esp_err_t WebUi::handleGetSettings(httpd_req_t* req) {
 }
 
 esp_err_t WebUi::handlePostSettings(httpd_req_t* req) {
+    if (!fromOwnPage(req)) return rejectForeign(req);
     // Body zuerst ohne Sperre lesen: das kann bei langsamen Clients dauern
     if (req->content_len > MAX_BODY) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "zu gross");
     std::string body(req->content_len, '\0');
@@ -341,16 +379,7 @@ esp_err_t WebUi::handlePostSettings(httpd_req_t* req) {
     formNumber(body, "tune_timeout_ms", n.tuneTimeoutMs);
     formNumber(body, "swr_settle_ms", n.swrSettleMs);
     if (formValue(body, "swr_max", v) && !v.empty()) n.swrMax = strtof(v.c_str(), nullptr);
-    n.sanitize();
-
-    const bool reboot =
-        n.wifiSsid != ui.cfg_.wifiSsid || n.wifiPass != ui.cfg_.wifiPass || n.hostname != ui.cfg_.hostname;
-    const bool tciChanged = n.tciHost != ui.cfg_.tciHost || n.tciPort != ui.cfg_.tciPort;
-
-    ui.cfg_ = n;
-    ui.cfg_.save();
-    if (tciChanged && !reboot) ui.tci_.configure(ui.cfg_.tciHost, ui.cfg_.tciPort);
-    if (reboot) ui.scheduleReboot();
+    const bool reboot = ui.applySettings(n);
 
     cJSON* root = cJSON_CreateObject();
     cJSON_AddBoolToObject(root, "ok", true);
@@ -359,6 +388,7 @@ esp_err_t WebUi::handlePostSettings(httpd_req_t* req) {
 }
 
 esp_err_t WebUi::handleReboot(httpd_req_t* req) {
+    if (!fromOwnPage(req)) return rejectForeign(req);
     std::lock_guard<std::recursive_mutex> lock(appMutex());
     if (!self(req)->authorized(req)) return ESP_OK;
     self(req)->scheduleReboot();
@@ -369,6 +399,7 @@ esp_err_t WebUi::handleReboot(httpd_req_t* req) {
 
 // Tune starten (Body "on=1") oder abbrechen ("on=0"). Löst Senden aus, daher geschützt.
 esp_err_t WebUi::handleTune(httpd_req_t* req) {
+    if (!fromOwnPage(req)) return rejectForeign(req);
     char body[16] = {};
     if (req->content_len >= sizeof(body)) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "zu gross");
     if (req->content_len > 0 && !recvExact(req, body, req->content_len)) return ESP_FAIL;
@@ -378,11 +409,15 @@ esp_err_t WebUi::handleTune(httpd_req_t* req) {
     std::lock_guard<std::recursive_mutex> lock(appMutex());
     WebUi& ui = *self(req);
     if (!ui.authorized(req)) return ESP_OK;
+    // Der Tuner-Task prüft beim Ausführen nochmals; hier nur für die Rückmeldung
     if (on == "1") {
         if (!ui.tci_.ready()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "not_ready");
-        if (!ui.tuner_.startTune()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "busy");
-    } else if (!ui.tuner_.stopTune()) {
-        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "not_tuning");
+        if (ui.tuner_.locked()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "locked");
+        if (ui.tuner_.busy()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "busy");
+        ui.tuner_.requestStart();
+    } else {
+        if (!ui.tuner_.busy()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "not_tuning");
+        ui.tuner_.requestStop();
     }
     cJSON* root = cJSON_CreateObject();
     cJSON_AddBoolToObject(root, "ok", true);
@@ -390,16 +425,19 @@ esp_err_t WebUi::handleTune(httpd_req_t* req) {
 }
 
 // WLAN-Suche für die Auswahl der SSID. Gesperrt während einer Abstimmung, weil der
-// Scan kurz die Kanäle wechselt und den TCI-Verkehr verzögert.
+// Scan kurz die Kanäle wechselt und den TCI-Verkehr um Sekunden verzögert.
 esp_err_t WebUi::handleScan(httpd_req_t* req) {
+    if (!fromOwnPage(req)) return rejectForeign(req);
     WebUi& ui = *self(req);
     {
         std::lock_guard<std::recursive_mutex> lock(appMutex());
         if (!ui.authorized(req)) return ESP_OK;
-        if (ui.tuner_.busy()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "busy");
+        if (!ui.tuner_.lockIfIdle(Tuner::LOCK_SCAN)) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "busy");
     }
     std::vector<net::Network> networks;
-    if (!net::scan(networks)) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "scan_failed");
+    const bool ok = net::scan(networks);
+    ui.tuner_.setLock(Tuner::LOCK_SCAN, false);
+    if (!ok) return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "scan_failed");
 
     cJSON* root = cJSON_CreateObject();
     cJSON* list = cJSON_AddArrayToObject(root, "networks");
@@ -415,21 +453,24 @@ esp_err_t WebUi::handleScan(httpd_req_t* req) {
 }
 
 // Firmware-Update: Body ist die firmware.bin (application/octet-stream).
-// Der Empfang läuft ohne appMutex, damit Hauptschleife und Tuner weiterarbeiten.
+// Der Empfang läuft ohne appMutex. Neue Abstimmungen sind währenddessen gesperrt,
+// weil am Ende ein Neustart folgt und Flash-Zugriffe beide Kerne kurz anhalten.
 esp_err_t WebUi::handleUpdate(httpd_req_t* req) {
+    if (!fromOwnPage(req)) return rejectForeign(req);
     WebUi& ui = *self(req);
     {
         std::lock_guard<std::recursive_mutex> lock(appMutex());
         if (!ui.authorized(req)) return ESP_OK;
-        if (ui.tuner_.busy()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "busy");
+        if (!ui.tuner_.lockIfIdle(Tuner::LOCK_UPDATE)) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "busy");
     }
     const char* error = receiveFirmware(req);
     if (error) {
+        ui.tuner_.setLock(Tuner::LOCK_UPDATE, false);
         ESP_LOGE(TAG, "Update fehlgeschlagen: %s", error);
         return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, error);
     }
     ESP_LOGI(TAG, "Update geschrieben, starte neu");
-    ui.scheduleReboot();
+    ui.scheduleReboot();  // sperrt bis zum Neustart
     cJSON* root = cJSON_CreateObject();
     cJSON_AddBoolToObject(root, "ok", true);
     return sendJson(req, root);

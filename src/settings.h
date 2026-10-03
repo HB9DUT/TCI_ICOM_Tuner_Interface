@@ -23,5 +23,6 @@ struct Settings {
 
     void load();
     void save() const;
+    static void erase();  // alle gespeicherten Einstellungen löschen
     void sanitize();
 };

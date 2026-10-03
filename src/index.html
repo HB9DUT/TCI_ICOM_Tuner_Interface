@@ -113,7 +113,7 @@ de:{status:'Status',loading:'lade…',history:'Letzte Abstimmungen',h_ago:'vor',
  e_busy:'Der Tuner stimmt gerade ab.',e_no_partition:'Keine Update-Partition vorhanden.',e_bad_size:'Ungültige Dateigrösse.',
  e_no_memory:'Zu wenig Speicher.',e_begin_failed:'Update kann nicht gestartet werden.',e_transfer_aborted:'Übertragung abgebrochen.',
  e_not_firmware:'Die Datei ist keine Firmware für dieses Gerät.',e_wrong_project:'Die Firmware gehört zu einem anderen Projekt.',
- tune:'Tune',tune_stop:'Stopp',e_not_ready:'Keine TCI-Verbindung.',e_not_tuning:'Es läuft kein Tune.',
+ tune:'Tune',tune_stop:'Stopp',e_not_ready:'Keine TCI-Verbindung.',e_locked:'Gesperrt (Update, Neustart oder WLAN-Suche).',e_not_tuning:'Es läuft kein Tune.',
  e_write_failed:'Schreiben fehlgeschlagen.',e_corrupt:'Die Firmware ist beschädigt.',e_boot_failed:'Startpartition kann nicht gesetzt werden.'},
 en:{status:'Status',loading:'loading…',history:'Recent tuning runs',h_ago:'ago',h_freq:'Frequency',h_result:'Result',h_dur:'Duration',
  settings:'Settings',wifi:'Wi-Fi',password:'Password',hostname:'Hostname<small>reachable as &lt;hostname&gt;.local</small>',all:'all',
@@ -144,9 +144,9 @@ en:{status:'Status',loading:'loading…',history:'Recent tuning runs',h_ago:'ago
  e_busy:'The tuner is currently tuning.',e_no_partition:'No update partition available.',e_bad_size:'Invalid file size.',
  e_no_memory:'Not enough memory.',e_begin_failed:'Update cannot be started.',e_transfer_aborted:'Upload aborted.',
  e_not_firmware:'The file is not firmware for this device.',e_wrong_project:'The firmware belongs to a different project.',
- tune:'Tune',tune_stop:'Stop',e_not_ready:'No TCI connection.',e_not_tuning:'No tune in progress.',
+ tune:'Tune',tune_stop:'Stop',e_not_ready:'No TCI connection.',e_locked:'Locked (update, restart or Wi-Fi scan).',e_not_tuning:'No tune in progress.',
  e_write_failed:'Writing failed.',e_corrupt:'The firmware is corrupt.',e_boot_failed:'Boot partition cannot be set.'}};
-const $=id=>document.getElementById(id),F=$('f');
+const $=id=>document.getElementById(id),F=$('f'),H={'X-TCI-Tuner':'1'};
 const store={get(){try{return localStorage.getItem('lang')}catch(e){return null}},set(v){try{localStorage.setItem('lang',v)}catch(e){}}};
 let lang=store.get()||((navigator.language||'').toLowerCase().startsWith('de')?'de':'en');
 const T=k=>L[lang][k]??L.de[k]??k;
@@ -176,7 +176,7 @@ function render(){
  $('st').innerHTML=h;
  const tb=$('tb'),run=u.state!='idle';
  tb.textContent=run?T('tune_stop'):T('tune');tb.classList.toggle('stop',run);
- tb.disabled=tuneBusy||u.state=='stopping'||(!run&&!t.ready);
+ tb.disabled=tuneBusy||u.state=='stopping'||(!run&&(!t.ready||u.locked));
  $('hist').innerHTML=s.history.length?s.history.map(e=>
   `<tr><td>${dur(e.ago_s)}</td><td>${e.trx}</td><td>${mhz(e.freq)}</td><td class="${RES[e.result]||''}">${esc(T('res_'+e.result))}</td><td>${e.swr===null?'–':e.swr.toFixed(2)}</td><td>${(e.duration_ms/1000).toFixed(1)} s</td></tr>`).join('')
   :`<tr><td colspan="6">${T('none_yet')}</td></tr>`;
@@ -186,7 +186,7 @@ async function scan(){
  const n=$('nets'),b=$('scan');
  b.disabled=true;n.innerHTML=`<div class="note">${T('scanning')}</div>`;
  try{
-  const x=await fetch('/api/scan'),t=await x.text();
+  const x=await fetch('/api/scan',{headers:H}),t=await x.text();
   if(!x.ok){const k='e_'+t.trim();n.innerHTML=`<div class="note err">${esc(L[lang][k]?T(k):T('e_scan_failed'))}</div>`;return}
   const l=JSON.parse(t).networks;
   n.innerHTML=l.length?l.map(w=>`<button type="button" data-ssid="${esc(w.ssid)}"><span>${esc(w.ssid)}</span><small>${w.secure?'':T('open_net')+' · '}${bars(w.rssi)} ${w.rssi} dBm</small></button>`).join('')
@@ -227,18 +227,18 @@ async function load(){
 F.onsubmit=async ev=>{
  ev.preventDefault();$('msg').textContent=T('saving');
  try{
-  const r=await(await fetch('/api/settings',{method:'POST',body:new URLSearchParams(new FormData(F))})).json();
+  const r=await(await fetch('/api/settings',{method:'POST',headers:H,body:new URLSearchParams(new FormData(F))})).json();
   $('msg').textContent=r.reboot?T('saved_reboot'):T('saved');
   F.wifi_pass.value=F.web_pass.value='';F.web_pass_clear.checked=false;
   if(!r.reboot)load();
  }catch(e){$('msg').textContent=T('save_err')}
 };
-$('rb').onclick=async()=>{if(confirm(T('confirm_reboot'))){await fetch('/api/reboot',{method:'POST'});$('msg').textContent=T('rebooting')}};
+$('rb').onclick=async()=>{if(confirm(T('confirm_reboot'))){await fetch('/api/reboot',{method:'POST',headers:H});$('msg').textContent=T('rebooting')}};
 $('tb').onclick=async()=>{
  const on=last&&last.tuner.state=='idle'?1:0;
  tuneBusy=true;$('tb').disabled=true;$('tmsg').textContent='';$('tmsg').className='';
  try{
-  const x=await fetch('/api/tune',{method:'POST',body:new URLSearchParams({on})});
+  const x=await fetch('/api/tune',{method:'POST',headers:H,body:new URLSearchParams({on})});
   if(!x.ok){const k='e_'+(await x.text()).trim();$('tmsg').textContent=L[lang][k]?T(k):`${T('error')}: ${x.status}`;$('tmsg').className='err'}
  }catch(e){$('tmsg').textContent=T('no_answer');$('tmsg').className='err'}
  finally{tuneBusy=false;await status()}
@@ -252,7 +252,7 @@ $('up').onclick=()=>{
  if(!confirm(T('confirm_update')(f.name)))return;
  const x=new XMLHttpRequest(),pg=$('pg');
  const done=(t,c)=>{uploading=false;$('up').disabled=false;pg.hidden=true;um(t,c)};
- x.open('POST','/api/update');x.setRequestHeader('Content-Type','application/octet-stream');
+ x.open('POST','/api/update');x.setRequestHeader('Content-Type','application/octet-stream');x.setRequestHeader('X-TCI-Tuner','1');
  x.upload.onprogress=e=>{if(e.lengthComputable){pg.value=e.loaded/e.total;um(`${T('uploading')} ${Math.round(e.loaded/e.total*100)} %`)}};
  x.onload=()=>{if(x.status==200){pg.hidden=true;um(T('installed'),'ok');waitReboot()}else{const k='e_'+x.responseText.trim();done(L[lang][k]?T(k):`${T('error')}: ${x.responseText||x.status}`,'err')}};
  x.onerror=()=>done(T('upload_abort'),'err');

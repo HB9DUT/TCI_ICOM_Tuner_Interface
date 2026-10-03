@@ -8,10 +8,11 @@ Towards the tuner, the interface takes the place of an ICOM radio. This makes it
 
 - **Triggered by TUNE in SDR-Software:** Tuning starts automatically, and the connection re-establishes itself within 5 s after an interruption, e.g. when the SDR software is restarted.
 - **AH-4 sequence:** Holds START until the tuner asserts KEY, then detects the end of tuning as well as the tuner's failure signal.
-- **Safety:** The tune carrier is switched off after an adjustable timeout at the latest, even if the tuner does not respond. The stop command is repeated until ExpertSDR3 confirms it.
+- **Safety:** The tune carrier is switched off after an adjustable timeout at the latest, even if the tuner does not respond. The stop command is repeated until the SDR software confirms it. See [Safety](#safety).
 - **SWR check:** After tuning, the SWR is measured via the TX sensors of ExpertSDR3 and checked against a limit.
 - **Web interface:** Status, the last 10 tuning runs with frequency, result, SWR and duration, and all settings. Optional password protection.
 - **Tune button in the web interface:** Starts a tune from the browser (the interface sets TUNE via TCI itself) and can stop it again.
+- **Console via USB and telnet:** Configuration and diagnostics without the web interface, including live log output over telnet.
 - **Setup without programming:** Without Wi-Fi, the interface opens an access point with a configuration page (captive portal). Available Wi-Fi networks can be selected from a list.
 - **Status LED:** Shows Wi-Fi, TCI connection, tuning in progress and errors.
 - **Firmware update via the web interface:** Automatically falls back to the previous firmware if the new one does not start.
@@ -37,7 +38,7 @@ TUNE:0,true;  ──────▶ START active ──────────�
                       KEY released           ◀─────────── done
                         KEY active again < 100 ms later ◀─ failure (20 ms gap)
                       measure SWR (300 ms, TX_SENSORS)
-TUNE:0,false; ◀────── stop, repeated until ExpertSDR3 confirms
+TUNE:0,false; ◀────── stop, repeated until the SDR software confirms
 ```
 
 The tune carrier is already on as soon as TUNE is pressed. While tuning, the AH-4 checks that the power is between 5 and 15 W and aborts otherwise. Set the tune power in SDR-Software to about 10 W. For other tuners, use the limits from their manual.
@@ -49,8 +50,8 @@ The tune carrier is already on as soon as TUNE is pressed. While tuning, the AH-
 | Tuner reports failure | Tuner briefly asserted KEY again after releasing it (no match found) |
 | Tuner not responding | KEY did not become active within the "KEY wait time" after START |
 | Timeout | Tuner not done within the "Tune timeout" |
-| Aborted | TUNE ended in ExpertSDR3 or TCI connection lost |
-| Stop not confirmed | ExpertSDR3 did not confirm `TUNE:false` after 6 attempts |
+| Aborted | TUNE ended in the SDR software, stopped via web interface or console, or TCI connection lost |
+| Stop not confirmed | The SDR software did not confirm `TUNE:false` after 6 attempts |
 
 ## Hardware
 
@@ -139,6 +140,8 @@ Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a re
 
 ### JSON API
 
+Requests that change something (all `POST` and `/api/scan`) need the header `X-TCI-Tuner: 1`, e.g. `curl -X POST -H 'X-TCI-Tuner: 1' -d on=1 http://tci-tuner.local/api/tune`. Other websites open in the browser cannot set it, so they cannot key the transmitter or change settings behind your back (the browser would send a stored password along).
+
 | Method | Path | Content |
 |---|---|---|
 | GET | `/api/status` | Wi-Fi, TCI, tuner state and history |
@@ -158,7 +161,35 @@ Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a re
 | deskHPSDR | yes | only if the tune was started via TCI | yes |
 | AetherSDR | no (tune changes are not reported to TCI clients) | yes | yes |
 
-deskHPSDR ignores a TCI stop request for a tune that was started in deskHPSDR itself. With the tune button in the web interface, the interface starts the tune and can stop it again.
+deskHPSDR ignores a TCI stop request for a tune that was started in deskHPSDR itself. With the tune button in the web interface, the interface starts the tune and can stop it again. A fix is proposed in [deskhpsdr#241](https://github.com/dl1bz/deskhpsdr/pull/241).
+
+### Console (USB and telnet)
+
+The same commands are available on the USB serial port (115200 baud, e.g. `pio device monitor`) and via telnet on port 23 (`telnet tci-tuner.local`, one session at a time). `help` lists them:
+
+| Command | Function |
+|---|---|
+| `show` | Configuration and state |
+| `history` | Last tuning runs |
+| `scan` | Visible Wi-Fi networks |
+| `ssid`, `pass`, `hostname` | Wi-Fi settings |
+| `tci <host> [port]` | TCI server |
+| `trx`, `keyactive`, `starthold`, `keywait`, `timeout`, `swrsettle`, `swrmax` | Tuner settings (as in the web interface) |
+| `webpass` | Web and telnet password; over telnet the current password is required |
+| `save` / `discard` | Store and apply the changes / drop them |
+| `tune` / `stop` | Start / abort a tune |
+| `reboot`, `factory yes` | Restart / erase all settings |
+| `log on` / `log off` | Telnet only: show the log output in the session |
+| `quit` | Telnet only: close the session |
+
+Telnet is unencrypted. If a web interface password is set, telnet asks for it before accepting commands.
+
+### Safety
+
+The tuner sequence runs in its own high-priority task and owns the START line; the web interface, console and TCI connection only send it commands. KEY is captured by interrupt with a timestamp, so even the 20 ms failure gap is detected while the web interface or a flash write is busy. TCI commands are sent from a separate task, so a stalled network does not delay the tuner.
+
+- **No restart in the middle of a tune:** Restart, firmware update and Wi-Fi scan lock new tunes. A tune requested meanwhile is answered with `TUNE:false`; a running one is stopped and the restart waits until it has ended.
+- **After a restart:** If the SDR software reports an active tune while the connection is being established (e.g. the interface restarted during a tune), the interface switches the carrier off instead of starting a tuning run.
 
 ## Status LED
 

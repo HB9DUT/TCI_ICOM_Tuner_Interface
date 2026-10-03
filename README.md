@@ -9,7 +9,7 @@ Towards the tuner, the interface takes the place of an ICOM radio. This makes it
 - **Triggered by TUNE in SDR-Software:** Tuning starts automatically, and the connection re-establishes itself within 5 s after an interruption, e.g. when the SDR software is restarted.
 - **AH-4 sequence:** Holds START until the tuner asserts KEY, then detects the end of tuning as well as the tuner's failure signal.
 - **Safety:** The tune carrier is switched off after an adjustable timeout at the latest, even if the tuner does not respond. The stop command is repeated until the SDR software confirms it. See [Safety](#safety).
-- **SWR check:** After tuning, the SWR is measured via the TX sensors of ExpertSDR3 and checked against a limit.
+- **SWR check:** After tuning, the SWR is measured via the TX sensors of the SDR software and checked against a limit.
 - **Web interface:** Status, the last 10 tuning runs with frequency, result, SWR and duration, and all settings. Optional password protection.
 - **Tune button in the web interface:** Starts a tune from the browser (the interface sets TUNE via TCI itself) and can stop it again.
 - **Console via USB and telnet:** Configuration and diagnostics without the web interface, including live log output over telnet.
@@ -23,7 +23,7 @@ The web interface is available in English and German and follows the browser lan
 ## Requirements
 
 - ESP32 board with 4 MB flash (e.g. ESP32-DevKitC, PlatformIO board `esp32dev`)
-- SDR with ExpertSDR3 and the TCI server enabled (*Options → TCI*)
+- SDR software with the TCI server enabled, e.g. ExpertSDR3 (*Options → TCI*), Thetis, deskHPSDR or AetherSDR (see [SDR software](#sdr-software))
 - Tuner with an ICOM AH-4 interface
 - Interface circuit (see [Hardware](#hardware)) and a 13.8 V supply
 - Chrome or Edge for the [web installer](https://hb9dut.github.io/TCI_ICOM_Tuner_Interface/), or [PlatformIO](https://platformio.org/) to build from source (ESP-IDF 5.4)
@@ -31,7 +31,7 @@ The web interface is available in English and German and follows the browser lan
 ## Tuning sequence
 
 ```
-ExpertSDR3            Interface (ESP32)                  Tuner
+SDR software          Interface (ESP32)                  Tuner
 TUNE:0,true;  ──────▶ START active ────────────────────▶ reset, ready after approx. 300 ms
                       KEY active             ◀─────────── KEY (tuning, typ. 1–3 s)
                       START released (250 ms after KEY)
@@ -85,7 +85,7 @@ The pin assignment is in [src/hw_config.h](src/hw_config.h).
 ### Testing without a tuner
 
 - Connect a push button between KEY and GND.
-- **Success:** Press TUNE in ExpertSDR3, press the button within 2 s (the tuner is "tuning") and release it (done). Result: "OK".
+- **Success:** Press TUNE in the SDR software, press the button within 2 s (the tuner is "tuning") and release it (done). Result: "OK".
 - **Failure:** After releasing, briefly press again within 100 ms. Result: "Tuner reports failure".
 - **Making START visible:** An LED with a series resistor from +13.8 V to START lights up while START is active.
 
@@ -134,7 +134,7 @@ The web installer can also be used for updates. Settings are kept unless you cho
 | Tune timeout | 20000 ms | From start; then the carrier is switched off |
 | SWR measuring time | 300 ms | Keep the carrier on this long after tuning to measure the SWR (0 = no measurement) |
 | Max. SWR | 2.0 | Limit for the SWR check (0 = no check) |
-| Web interface password | – | Protects the web interface (user `admin`) |
+| Access password | – | Web interface (user `admin`) and telnet; protects tune, settings and update. The status page stays readable. |
 
 Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a restart.
 
@@ -237,7 +237,7 @@ With password protection, add `-u admin:<password>`.
 
 This project is provided "as is", without warranty of any kind. Building and using it is entirely at your own risk.
 
-- **You are responsible for your station.** The interface keys a transmitter via ExpertSDR3. Make sure your setup, tune power and antenna are suitable, and that you operate within the terms of your amateur radio licence and local regulations.
+- **You are responsible for your station.** The interface keys a transmitter via the SDR software (TCI). Make sure your setup, tune power and antenna are suitable, and that you operate within the terms of your amateur radio licence and local regulations.
 - **Check the hardware yourself.** The interface circuit is connected to a 13.8 V supply, a tuner and RF equipment. Wiring errors can damage the ESP32, the tuner, the radio or the power supply. Verify the circuit, the pinout of your tuner and all levels before connecting anything.
 - **No guarantee of correct function.** Timeouts and checks reduce the risk of an unattended carrier or a bad match, but they cannot rule out software or hardware faults. Do not leave the station unattended while tuning.
 - The author accepts no liability for damage to equipment, injury, interference or any other consequences arising from the use of this project.

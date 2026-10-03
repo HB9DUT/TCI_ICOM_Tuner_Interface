@@ -56,7 +56,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 12px}
 <label><span data-t="password">Passwort</span><input name="wifi_pass" type="password" maxlength="64" autocomplete="new-password"></label>
 <label><span data-t="hostname">Hostname<small>erreichbar als &lt;hostname&gt;.local</small></span><input name="hostname" maxlength="32"></label>
 </fieldset>
-<fieldset><legend>TCI (ExpertSDR3)</legend>
+<fieldset><legend data-t="tci_legend">TCI (SDR-Software)</legend>
 <label><span>Host / IP</span><input name="tci_host" maxlength="64"></label>
 <label><span>Port</span><input name="tci_port" type="number" min="1" max="65535"></label>
 <label><span>Transceiver</span><select name="tune_trx"><option value="-1" data-t="all">alle</option><option value="0">TRX 0</option><option value="1">TRX 1</option><option value="2">TRX 2</option><option value="3">TRX 3</option></select></label>
@@ -69,7 +69,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 12px}
 <label><span data-t="swr_settle">SWR-Messzeit</span><input name="swr_settle_ms" type="number" min="0" max="2000"></label>
 <label><span data-t="swr_max">Max. SWR</span><input name="swr_max" type="number" step="0.1" min="0" max="10"></label>
 </fieldset>
-<fieldset><legend data-t="web">Weboberfläche</legend>
+<fieldset><legend data-t="access">Zugang</legend>
 <label><span data-t="web_pass">Passwort</span><input name="web_pass" type="password" autocomplete="new-password"></label>
 <label><span data-t="web_pass_clear">Passwortschutz entfernen</span><input name="web_pass_clear" type="checkbox" value="1"></label>
 </fieldset>
@@ -86,14 +86,14 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 12px}
 const L={
 de:{status:'Status',loading:'lade…',history:'Letzte Abstimmungen',h_ago:'vor',h_freq:'Frequenz',h_result:'Ergebnis',h_dur:'Dauer',
  settings:'Einstellungen',wifi:'WLAN',password:'Passwort',hostname:'Hostname<small>erreichbar als &lt;hostname&gt;.local</small>',all:'alle',
- tuner_iface:'Tuner (AH-4-Schnittstelle)',
+ tuner_iface:'Tuner (AH-4-Schnittstelle)',tci_legend:'TCI (SDR-Software)',
  key_active:'KEY-Eingang aktiv bei<small>GPIO26: HIGH = Standard-Interface (invertierender Transistor)</small>',
  start_hold:'START halten<small>ms nach Aktivierung von KEY</small>',
  key_wait:'Wartezeit auf KEY<small>ms ab Start, sonst „keine Antwort“</small>',
  tune_timeout:'Tune-Timeout<small>ms ab Start, danach Träger aus</small>',
  swr_settle:'SWR-Messzeit<small>ms Träger nach Tune-Ende, 0 = keine Messung</small>',
  swr_max:'Max. SWR<small>0 = keine Prüfung</small>',
- web:'Weboberfläche',web_pass:'Passwort<small>Benutzer „admin“</small>',web_pass_clear:'Passwortschutz entfernen',
+ access:'Zugang',web_pass:'Passwort<small>Weboberfläche (Benutzer „admin“) und Telnet; schützt Tune, Einstellungen und Update</small>',web_pass_clear:'Passwortschutz entfernen',
  scan:'Suchen',scanning:'Suche WLANs…',no_nets:'Keine WLANs gefunden.',open_net:'offen',
  e_scan_failed:'Suche fehlgeschlagen. Bitte nochmals versuchen.',
  save:'Speichern',reboot:'Neustart',update:'Firmware-Update',install:'Installieren',
@@ -101,7 +101,7 @@ de:{status:'Status',loading:'lade…',history:'Letzte Abstimmungen',h_ago:'vor',
  r_wifi:'WLAN',r_ap:'Access-Point',r_tuner:'Tuner',r_key:'KEY-Leitung',r_uptime:'Laufzeit',r_device:'Gerät',
  not_connected:'nicht verbunden',wait_ready:'verbunden, warte auf READY',no_server:'kein Server konfiguriert',no_answer:'keine Antwort',
  active:'aktiv',inactive:'inaktiv',none_yet:'noch keine',
- s_idle:'bereit',s_wait_key:'warte auf Tuner',s_tuning:'stimmt ab',s_settle:'SWR-Messung',s_stopping:'beende Tune',
+ s_idle:'bereit',s_wait_key:'warte auf Tuner',s_tuning:'stimmt ab',s_settle:'SWR-Messung',s_stopping:'beende Tune',locked:'gesperrt (Update, Neustart oder WLAN-Suche)',load_err:'Einstellungen konnten nicht geladen werden.',
  res_ok:'OK',res_swr_high:'SWR zu hoch',res_tuner_failed:'Tuner meldet Fehlschlag',res_no_response:'Tuner antwortet nicht',
  res_timeout:'Timeout',res_aborted:'Abgebrochen',res_stop_failed:'Stopp nicht bestätigt',
  pw_unchanged:'unverändert',pw_none:'kein Passwort',pw_noprot:'kein Schutz',
@@ -117,14 +117,14 @@ de:{status:'Status',loading:'lade…',history:'Letzte Abstimmungen',h_ago:'vor',
  e_write_failed:'Schreiben fehlgeschlagen.',e_corrupt:'Die Firmware ist beschädigt.',e_boot_failed:'Startpartition kann nicht gesetzt werden.'},
 en:{status:'Status',loading:'loading…',history:'Recent tuning runs',h_ago:'ago',h_freq:'Frequency',h_result:'Result',h_dur:'Duration',
  settings:'Settings',wifi:'Wi-Fi',password:'Password',hostname:'Hostname<small>reachable as &lt;hostname&gt;.local</small>',all:'all',
- tuner_iface:'Tuner (AH-4 interface)',
+ tuner_iface:'Tuner (AH-4 interface)',tci_legend:'TCI (SDR software)',
  key_active:'KEY input active on<small>GPIO26: HIGH = standard interface (inverting transistor)</small>',
  start_hold:'Hold START<small>ms after KEY becomes active</small>',
  key_wait:'KEY wait time<small>ms from start, otherwise “no response”</small>',
  tune_timeout:'Tune timeout<small>ms from start, then carrier off</small>',
  swr_settle:'SWR measuring time<small>ms of carrier after tuning, 0 = no measurement</small>',
  swr_max:'Max. SWR<small>0 = no check</small>',
- web:'Web interface',web_pass:'Password<small>user “admin”</small>',web_pass_clear:'Remove password protection',
+ access:'Access',web_pass:'Password<small>web interface (user “admin”) and telnet; protects tune, settings and update</small>',web_pass_clear:'Remove password protection',
  scan:'Scan',scanning:'Scanning for Wi-Fi networks…',no_nets:'No Wi-Fi networks found.',open_net:'open',
  e_scan_failed:'Scan failed. Please try again.',
  save:'Save',reboot:'Restart',update:'Firmware update',install:'Install',
@@ -132,7 +132,7 @@ en:{status:'Status',loading:'loading…',history:'Recent tuning runs',h_ago:'ago
  r_wifi:'Wi-Fi',r_ap:'Access point',r_tuner:'Tuner',r_key:'KEY line',r_uptime:'Uptime',r_device:'Device',
  not_connected:'not connected',wait_ready:'connected, waiting for READY',no_server:'no server configured',no_answer:'no response',
  active:'active',inactive:'inactive',none_yet:'none yet',
- s_idle:'ready',s_wait_key:'waiting for tuner',s_tuning:'tuning',s_settle:'measuring SWR',s_stopping:'stopping tune',
+ s_idle:'ready',s_wait_key:'waiting for tuner',s_tuning:'tuning',s_settle:'measuring SWR',s_stopping:'stopping tune',locked:'locked (update, restart or Wi-Fi scan)',load_err:'Settings could not be loaded.',
  res_ok:'OK',res_swr_high:'SWR too high',res_tuner_failed:'Tuner reports failure',res_no_response:'Tuner not responding',
  res_timeout:'Timeout',res_aborted:'Aborted',res_stop_failed:'Stop not confirmed',
  pw_unchanged:'unchanged',pw_none:'no password',pw_noprot:'no protection',
@@ -169,7 +169,7 @@ function render(){
  let h=row(T('r_wifi'),w.connected?`${esc(w.ssid)} · ${w.ip} · ${w.rssi} dBm`:T('not_connected'),w.connected?'ok':'err');
  if(w.ap)h+=row(T('r_ap'),`${esc(w.ap_ssid)} · 192.168.4.1`,'warn');
  h+=row('TCI',t.ready?`${esc(t.device)} · ${esc(t.protocol)}`:t.connected?T('wait_ready'):t.host?`${T('not_connected')} (${esc(t.host)}:${t.port})`:T('no_server'),t.ready?'ok':'err');
- h+=row(T('r_tuner'),u.state=='idle'?T('s_idle'):`${T('s_'+u.state)} · TRX ${u.trx} · ${(u.elapsed_ms/1000).toFixed(1)} s`,u.state=='idle'?'':'warn');
+ h+=row(T('r_tuner'),u.state=='idle'?(u.locked?T('locked'):T('s_idle')):`${T('s_'+u.state)} · TRX ${u.trx} · ${(u.elapsed_ms/1000).toFixed(1)} s`,u.state=='idle'&&!u.locked?'':'warn');
  h+=row(T('r_key'),u.key?T('active'):T('inactive'));
  if(u.swr!==null)h+=row('SWR',u.swr.toFixed(2));
  h+=row(T('r_uptime'),dur(s.uptime));
@@ -220,7 +220,8 @@ async function status(){
  }catch(e){$('st').innerHTML=row(T('r_device'),T('no_answer'),'err')}
 }
 async function load(){
- const s=await(await fetch('/api/settings')).json();
+ let s;
+ try{s=await(await fetch('/api/settings')).json()}catch(e){settingsLoaded=false;$('msg').textContent=T('load_err');return}
  for(const[k,v]of Object.entries(s)){const e=F.elements[k];if(e&&e.type!='password'&&e.type!='checkbox')e.value=v}
  pw={wifi:s.wifi_pass_set,web:s.web_pass_set};placeholders();
 }
@@ -230,10 +231,10 @@ F.onsubmit=async ev=>{
   const r=await(await fetch('/api/settings',{method:'POST',headers:H,body:new URLSearchParams(new FormData(F))})).json();
   $('msg').textContent=r.reboot?T('saved_reboot'):T('saved');
   F.wifi_pass.value=F.web_pass.value='';F.web_pass_clear.checked=false;
-  if(!r.reboot)load();
+  if(r.reboot)waitReboot();else load();
  }catch(e){$('msg').textContent=T('save_err')}
 };
-$('rb').onclick=async()=>{if(confirm(T('confirm_reboot'))){await fetch('/api/reboot',{method:'POST',headers:H});$('msg').textContent=T('rebooting')}};
+$('rb').onclick=async()=>{if(confirm(T('confirm_reboot'))){await fetch('/api/reboot',{method:'POST',headers:H});$('msg').textContent=T('rebooting');waitReboot()}};
 $('tb').onclick=async()=>{
  const on=last&&last.tuner.state=='idle'?1:0;
  tuneBusy=true;$('tb').disabled=true;$('tmsg').textContent='';$('tmsg').className='';

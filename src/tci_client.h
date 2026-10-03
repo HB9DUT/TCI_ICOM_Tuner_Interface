@@ -23,7 +23,8 @@ public:
 
     std::function<void(bool ready)> onReady;
     // atConnect: TUNE wurde beim Verbindungsaufbau gemeldet, nicht durch eine neue Anforderung
-    std::function<void(int trx, bool on, uint32_t freqHz, bool atConnect)> onTune;
+    // carrierOn: der Server hatte vor diesem TUNE schon TRX:true gemeldet (z.B. Thetis)
+    std::function<void(int trx, bool on, uint32_t freqHz, bool atConnect, bool carrierOn)> onTune;
     std::function<void(int trx, float swr)> onTxSensors;
 
     // Server festlegen; wirkt im nächsten Durchlauf. Leerer Host = keine Verbindung.

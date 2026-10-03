@@ -80,7 +80,7 @@ public:
 
     // Aus beliebigen Tasks aufrufbar
     void applyConfig(const Config& cfg);
-    void onTuneEvent(int trx, bool on, uint32_t freqHz, bool atConnect);
+    void onTuneEvent(int trx, bool on, uint32_t freqHz, bool atConnect, bool carrierOn);
     void onTxSensors(int trx, float swr);
     void onTciReady(bool ready);
 
@@ -106,6 +106,7 @@ private:
         int trx;
         bool on;
         bool atConnect;
+        bool carrierOn;
         uint32_t freqHz;
         float swr;
         Config cfg;

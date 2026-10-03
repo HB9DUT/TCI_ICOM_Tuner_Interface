@@ -261,7 +261,8 @@ void TciClient::handleCommand(const char* cmd, size_t len) {
     if (strcmp(name, "tune") == 0 && argc >= 2) {
         const int trx = atoi(argv[0]);
         const bool atConnect = !ready_ || millis() - readyAtMs_ < AT_CONNECT_WINDOW_MS;
-        if (onTune) onTune(trx, parseBool(argv[1]), vfoHz(trx), atConnect);
+        // TRX jetzt lesen: deskHPSDR schickt TRX:true direkt hinter TUNE:true
+        if (onTune) onTune(trx, parseBool(argv[1]), vfoHz(trx), atConnect, transmitting(trx));
     } else if (strcmp(name, "tx_sensors") == 0 && argc >= 5) {
         // tx_sensors:trx,mic_dbm,rms_w,peak_w,swr;
         if (onTxSensors) onTxSensors(atoi(argv[0]), strtof(argv[4], nullptr));

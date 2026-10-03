@@ -127,13 +127,14 @@ void Tuner::applyConfig(const Config& cfg) {
     post(c);
 }
 
-void Tuner::onTuneEvent(int trx, bool on, uint32_t freqHz, bool atConnect) {
+void Tuner::onTuneEvent(int trx, bool on, uint32_t freqHz, bool atConnect, bool carrierOn) {
     Command c = {};
     c.type = Command::Type::Tune;
     c.trx = trx;
     c.on = on;
     c.freqHz = freqHz;
     c.atConnect = atConnect;
+    c.carrierOn = carrierOn;
     post(c);
 }
 
@@ -213,7 +214,7 @@ void Tuner::handle(const Command& cmd, uint32_t now) {
                     tci_.setTune(cmd.trx, false);
                     break;
                 }
-                if (tci_.transmitting(cmd.trx)) {
+                if (cmd.carrierOn) {
                     // Liegt der Träger schon vor START an (Thetis), stimmt der Tuner nicht ab:
                     // Träger aus, danach START und Träger wieder ein wie über die Weboberfläche.
                     ESP_LOGI(TAG, "Träger vor START, schalte ihn zuerst aus");

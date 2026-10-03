@@ -79,7 +79,9 @@ extern "C" void app_main() {
     settings.load();
 
     tci.onReady = [](bool ready) { tuner.onTciReady(ready); };
-    tci.onTune = [](int trx, bool on, uint32_t freqHz, bool atConnect) { tuner.onTuneEvent(trx, on, freqHz, atConnect); };
+    tci.onTune = [](int trx, bool on, uint32_t freqHz, bool atConnect, bool carrierOn) {
+        tuner.onTuneEvent(trx, on, freqHz, atConnect, carrierOn);
+    };
     tci.onTxSensors = [](int trx, float swr) { tuner.onTxSensors(trx, swr); };
     tuner.start(Tuner::Config::from(settings));
 

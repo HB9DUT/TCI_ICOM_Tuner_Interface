@@ -157,11 +157,13 @@ Requests that change something (all `POST` and `/api/scan`) need the header `X-T
 | Software | TUNE in the SDR starts the tuner | Interface can stop the tune | Tune button |
 |---|---|---|---|
 | ExpertSDR3 | yes | yes | yes |
-| Thetis | yes | yes | yes |
+| Thetis | yes (carrier is turned off until START, see below) | yes | yes |
 | deskHPSDR | yes | only if the tune was started via TCI | yes |
 | AetherSDR | no (tune changes are not reported to TCI clients) | yes | yes |
 
 deskHPSDR ignores a TCI stop request for a tune that was started in deskHPSDR itself. With the tune button in the web interface, the interface starts the tune and can stop it again. A fix is proposed in [deskhpsdr#241](https://github.com/dl1bz/deskhpsdr/pull/241).
+
+Thetis keys the carrier about 120 ms before it reports `TUNE:true`. With the carrier already present at START, the AH-4 only acknowledges START and does not tune. If the SDR software has reported `TRX:true` before `TUNE:true`, the interface therefore first turns the tune off, waits for `TRX:false` and the `TUNE:false` echo (max. 1.5 s), and then sets START together with `TUNE:true`, as with the tune button. Thetis reports `TUNE:false` up to 500 ms late; sending `TUNE:true` earlier makes Thetis transmit without the tune carrier. Late `TUNE:false` messages are ignored for 1 s. SDR software that reports `TRX:true` only after `TUNE:true` is not affected. The "Emulate ExpertSDR3 protocol" option in Thetis does not change this behaviour.
 
 ### Console (USB and telnet)
 

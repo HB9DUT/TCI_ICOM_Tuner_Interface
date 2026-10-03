@@ -43,6 +43,12 @@ public:
     void onTxSensors(int trx, float swr);
     void onTciReady(bool ready);
 
+    // Tune über die Weboberfläche. Das Modul setzt TUNE dann selbst und ist bei
+    // SDR-Programmen mit Sendeberechtigung (z.B. deskHPSDR) Besitzer des Sendens,
+    // darf den Tune also auch wieder beenden.
+    bool startTune();
+    bool stopTune();
+
     State state() const { return state_; }
     bool busy() const { return state_ != State::Idle; }
     bool keyActive() const { return keyStable_; }

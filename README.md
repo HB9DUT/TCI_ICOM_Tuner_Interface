@@ -11,6 +11,7 @@ Towards the tuner, the interface takes the place of an ICOM radio. This makes it
 - **Safety:** The tune carrier is switched off after an adjustable timeout at the latest, even if the tuner does not respond. The stop command is repeated until ExpertSDR3 confirms it.
 - **SWR check:** After tuning, the SWR is measured via the TX sensors of ExpertSDR3 and checked against a limit.
 - **Web interface:** Status, the last 10 tuning runs with frequency, result, SWR and duration, and all settings. Optional password protection.
+- **Tune button in the web interface:** Starts a tune from the browser (the interface sets TUNE via TCI itself) and can stop it again.
 - **Setup without programming:** Without Wi-Fi, the interface opens an access point with a configuration page (captive portal). Available Wi-Fi networks can be selected from a list.
 - **Status LED:** Shows Wi-Fi, TCI connection, tuning in progress and errors.
 - **Firmware update via the web interface:** Automatically falls back to the previous firmware if the new one does not start.
@@ -144,8 +145,20 @@ Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a re
 | GET | `/api/settings` | Settings (without passwords) |
 | POST | `/api/settings` | Change settings (`application/x-www-form-urlencoded`) |
 | POST | `/api/reboot` | Restart |
+| POST | `/api/tune` | Start (`on=1`) or stop (`on=0`) a tune |
 | GET | `/api/scan` | Visible Wi-Fi networks (takes about 3 s, blocked while tuning) |
 | POST | `/api/update` | Firmware update, body is the `firmware.bin` (`application/octet-stream`) |
+
+### SDR software
+
+| Software | TUNE in the SDR starts the tuner | Interface can stop the tune | Tune button |
+|---|---|---|---|
+| ExpertSDR3 | yes | yes | yes |
+| Thetis | yes | yes | yes |
+| deskHPSDR | yes | only if the tune was started via TCI | yes |
+| AetherSDR | no (tune changes are not reported to TCI clients) | yes | yes |
+
+deskHPSDR ignores a TCI stop request for a tune that was started in deskHPSDR itself. With the tune button in the web interface, the interface starts the tune and can stop it again.
 
 ## Status LED
 

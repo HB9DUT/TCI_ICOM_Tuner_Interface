@@ -190,6 +190,7 @@ bool WebUi::begin() {
         {"/api/settings", HTTP_GET, handleGetSettings, this},
         {"/api/settings", HTTP_POST, handlePostSettings, this},
         {"/api/reboot", HTTP_POST, handleReboot, this},
+        {"/api/tune", HTTP_POST, handleTune, this},
         {"/api/scan", HTTP_GET, handleScan, this},
         {"/api/update", HTTP_POST, handleUpdate, this},
     };
@@ -361,6 +362,28 @@ esp_err_t WebUi::handleReboot(httpd_req_t* req) {
     std::lock_guard<std::recursive_mutex> lock(appMutex());
     if (!self(req)->authorized(req)) return ESP_OK;
     self(req)->scheduleReboot();
+    cJSON* root = cJSON_CreateObject();
+    cJSON_AddBoolToObject(root, "ok", true);
+    return sendJson(req, root);
+}
+
+// Tune starten (Body "on=1") oder abbrechen ("on=0"). Löst Senden aus, daher geschützt.
+esp_err_t WebUi::handleTune(httpd_req_t* req) {
+    char body[16] = {};
+    if (req->content_len >= sizeof(body)) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "zu gross");
+    if (req->content_len > 0 && !recvExact(req, body, req->content_len)) return ESP_FAIL;
+    std::string on;
+    formValue(body, "on", on);
+
+    std::lock_guard<std::recursive_mutex> lock(appMutex());
+    WebUi& ui = *self(req);
+    if (!ui.authorized(req)) return ESP_OK;
+    if (on == "1") {
+        if (!ui.tci_.ready()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "not_ready");
+        if (!ui.tuner_.startTune()) return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "busy");
+    } else if (!ui.tuner_.stopTune()) {
+        return httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "not_tuning");
+    }
     cJSON* root = cJSON_CreateObject();
     cJSON_AddBoolToObject(root, "ok", true);
     return sendJson(req, root);

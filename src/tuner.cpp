@@ -108,7 +108,7 @@ void Tuner::onTuneEvent(int trx, bool on) {
     if (state_ == State::Stopping) {
         finish(pendingResult_);
     } else {
-        ESP_LOGI(TAG, "Tune in ExpertSDR3 beendet");
+        ESP_LOGI(TAG, "Tune im SDR-Programm beendet");
         finish(Result::Aborted);
     }
 }
@@ -124,6 +124,24 @@ void Tuner::onTciReady(bool ready) {
         ESP_LOGW(TAG, "TCI-Verbindung verloren");
         finish(Result::Aborted);
     }
+}
+
+bool Tuner::startTune() {
+    if (busy() || !tci_.ready()) return false;
+    const int trx = cfg_.tuneTrx < 0 ? 0 : cfg_.tuneTrx;
+    ESP_LOGI(TAG, "Tune über die Weboberfläche");
+    // Sitzung sofort beginnen statt auf das Echo zu warten: so gilt der Timeout auch,
+    // falls das Echo ausbleibt. Lehnt das SDR-Programm ab, meldet es TUNE:false.
+    startSession(trx, millis());
+    tci_.setTune(trx, true);
+    return true;
+}
+
+bool Tuner::stopTune() {
+    if (state_ == State::Idle || state_ == State::Stopping) return false;
+    ESP_LOGI(TAG, "Abbruch über die Weboberfläche");
+    requestStop(Result::Aborted, millis());
+    return true;
 }
 
 bool Tuner::lastFailed() const {

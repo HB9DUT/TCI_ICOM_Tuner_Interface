@@ -28,7 +28,8 @@ input,select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radi
 input[type=checkbox]{width:auto;justify-self:start}
 button{padding:8px 16px;border:0;border-radius:6px;background:var(--acc);color:#fff;font:inherit;cursor:pointer}
 button.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
-.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}#msg,#umsg{color:var(--muted)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}#msg,#umsg,#tmsg{color:var(--muted)}
+#tunerow{margin-top:12px}#tb.stop{background:var(--err)}
 .hint{color:var(--muted);font-size:13px;margin:0 0 10px}code{font-size:12px}
 input[type=file]{width:auto;flex:1;min-width:0}progress{width:100%;margin-top:10px}
 .ssid{display:flex;gap:8px}.ssid input{flex:1;min-width:0}.ssid button{padding:7px 12px;flex:none}
@@ -41,7 +42,8 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:4px 0 12px}
 <header><h1>TCI to ICOM Tuner Interface</h1><div id="lang"><button type="button" data-l="de">DE</button><button type="button" data-l="en">EN</button></div></header>
 <nav id="tabs"><button type="button" class="on" data-tab="status" data-t="status">Status</button><button type="button" data-tab="settings" data-t="settings">Einstellungen</button></nav>
 <div id="tab-status">
-<section><h2 data-t="status">Status</h2><dl id="st"><dt data-t="status">Status</dt><dd data-t="loading">lade…</dd></dl></section>
+<section><h2 data-t="status">Status</h2><dl id="st"><dt data-t="status">Status</dt><dd data-t="loading">lade…</dd></dl>
+<div class="row" id="tunerow"><button type="button" id="tb" disabled>Tune</button><span id="tmsg"></span></div></section>
 <section><h2 data-t="history">Letzte Abstimmungen</h2><div class="scroll"><table>
 <thead><tr><th data-t="h_ago">vor</th><th>TRX</th><th data-t="h_freq">Frequenz</th><th data-t="h_result">Ergebnis</th><th>SWR</th><th data-t="h_dur">Dauer</th></tr></thead>
 <tbody id="hist"></tbody></table></div></section>
@@ -111,6 +113,7 @@ de:{status:'Status',loading:'lade…',history:'Letzte Abstimmungen',h_ago:'vor',
  e_busy:'Der Tuner stimmt gerade ab.',e_no_partition:'Keine Update-Partition vorhanden.',e_bad_size:'Ungültige Dateigrösse.',
  e_no_memory:'Zu wenig Speicher.',e_begin_failed:'Update kann nicht gestartet werden.',e_transfer_aborted:'Übertragung abgebrochen.',
  e_not_firmware:'Die Datei ist keine Firmware für dieses Gerät.',e_wrong_project:'Die Firmware gehört zu einem anderen Projekt.',
+ tune:'Tune',tune_stop:'Stopp',e_not_ready:'Keine TCI-Verbindung.',e_not_tuning:'Es läuft kein Tune.',
  e_write_failed:'Schreiben fehlgeschlagen.',e_corrupt:'Die Firmware ist beschädigt.',e_boot_failed:'Startpartition kann nicht gesetzt werden.'},
 en:{status:'Status',loading:'loading…',history:'Recent tuning runs',h_ago:'ago',h_freq:'Frequency',h_result:'Result',h_dur:'Duration',
  settings:'Settings',wifi:'Wi-Fi',password:'Password',hostname:'Hostname<small>reachable as &lt;hostname&gt;.local</small>',all:'all',
@@ -141,6 +144,7 @@ en:{status:'Status',loading:'loading…',history:'Recent tuning runs',h_ago:'ago
  e_busy:'The tuner is currently tuning.',e_no_partition:'No update partition available.',e_bad_size:'Invalid file size.',
  e_no_memory:'Not enough memory.',e_begin_failed:'Update cannot be started.',e_transfer_aborted:'Upload aborted.',
  e_not_firmware:'The file is not firmware for this device.',e_wrong_project:'The firmware belongs to a different project.',
+ tune:'Tune',tune_stop:'Stop',e_not_ready:'No TCI connection.',e_not_tuning:'No tune in progress.',
  e_write_failed:'Writing failed.',e_corrupt:'The firmware is corrupt.',e_boot_failed:'Boot partition cannot be set.'}};
 const $=id=>document.getElementById(id),F=$('f');
 const store={get(){try{return localStorage.getItem('lang')}catch(e){return null}},set(v){try{localStorage.setItem('lang',v)}catch(e){}}};
@@ -150,7 +154,7 @@ const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&g
 const mhz=hz=>hz?(hz/1e6).toFixed(3)+' MHz':'–';
 const dur=s=>s<60?s+' s':s<3600?Math.floor(s/60)+' min':s<86400?Math.floor(s/3600)+' h':Math.floor(s/86400)+' d';
 const RES={ok:'ok',swr_high:'err',tuner_failed:'err',no_response:'err',timeout:'err',aborted:'warn',stop_failed:'err'};
-let tuning=false,uploading=false,autoScanned=false,last=null,pw=null,tab='status',tabPicked=false,settingsLoaded=false;
+let tuneBusy=false,tuning=false,uploading=false,autoScanned=false,last=null,pw=null,tab='status',tabPicked=false,settingsLoaded=false;
 function showTab(t){
  tab=t;
  $('tab-status').hidden=t!=='status';$('tab-settings').hidden=t!=='settings';
@@ -170,19 +174,14 @@ function render(){
  if(u.swr!==null)h+=row('SWR',u.swr.toFixed(2));
  h+=row(T('r_uptime'),dur(s.uptime));
  $('st').innerHTML=h;
+ const tb=$('tb'),run=u.state!='idle';
+ tb.textContent=run?T('tune_stop'):T('tune');tb.classList.toggle('stop',run);
+ tb.disabled=tuneBusy||u.state=='stopping'||(!run&&!t.ready);
  $('hist').innerHTML=s.history.length?s.history.map(e=>
   `<tr><td>${dur(e.ago_s)}</td><td>${e.trx}</td><td>${mhz(e.freq)}</td><td class="${RES[e.result]||''}">${esc(T('res_'+e.result))}</td><td>${e.swr===null?'–':e.swr.toFixed(2)}</td><td>${(e.duration_ms/1000).toFixed(1)} s</td></tr>`).join('')
   :`<tr><td colspan="6">${T('none_yet')}</td></tr>`;
 }
-function placeholders(){
- if(!pw)return;
- F.wifi_pass.placeholder=pw.wifi?T('pw_unchanged'):T('pw_none');
- F.web_pass.placeholder=pw.web?T('pw_unchanged'):T('pw_noprot');
-}
-function setLang(l){
- lang=l;store.set(l);document.documentElement.lang=l;
- document.querySelectorAll('[data-t]').forEach(e=>e.innerHTML=T(e.dataset.t));
- const bars=r=>r>=-55?'▂▄▆█':r>=-67?'▂▄▆':r>=-78?'▂▄':'▂';
+const bars=r=>r>=-55?'▂▄▆█':r>=-67?'▂▄▆':r>=-78?'▂▄':'▂';
 async function scan(){
  const n=$('nets'),b=$('scan');
  b.disabled=true;n.innerHTML=`<div class="note">${T('scanning')}</div>`;
@@ -197,7 +196,15 @@ async function scan(){
  finally{b.disabled=false}
 }
 $('scan').onclick=scan;
-document.querySelectorAll('#lang button').forEach(b=>b.classList.toggle('on',b.dataset.l==l));
+function placeholders(){
+ if(!pw)return;
+ F.wifi_pass.placeholder=pw.wifi?T('pw_unchanged'):T('pw_none');
+ F.web_pass.placeholder=pw.web?T('pw_unchanged'):T('pw_noprot');
+}
+function setLang(l){
+ lang=l;store.set(l);document.documentElement.lang=l;
+ document.querySelectorAll('[data-t]').forEach(e=>e.innerHTML=T(e.dataset.t));
+ document.querySelectorAll('#lang button').forEach(b=>b.classList.toggle('on',b.dataset.l==l));
  render();placeholders();
 }
 async function status(){
@@ -227,6 +234,15 @@ F.onsubmit=async ev=>{
  }catch(e){$('msg').textContent=T('save_err')}
 };
 $('rb').onclick=async()=>{if(confirm(T('confirm_reboot'))){await fetch('/api/reboot',{method:'POST'});$('msg').textContent=T('rebooting')}};
+$('tb').onclick=async()=>{
+ const on=last&&last.tuner.state=='idle'?1:0;
+ tuneBusy=true;$('tb').disabled=true;$('tmsg').textContent='';$('tmsg').className='';
+ try{
+  const x=await fetch('/api/tune',{method:'POST',body:new URLSearchParams({on})});
+  if(!x.ok){const k='e_'+(await x.text()).trim();$('tmsg').textContent=L[lang][k]?T(k):`${T('error')}: ${x.status}`;$('tmsg').className='err'}
+ }catch(e){$('tmsg').textContent=T('no_answer');$('tmsg').className='err'}
+ finally{tuneBusy=false;await status()}
+};
 const um=(t,c)=>{$('umsg').textContent=t;$('umsg').className=c||''};
 function waitReboot(){setTimeout(async()=>{try{await fetch('/api/status');location.reload()}catch(e){waitReboot()}},2000)}
 $('up').onclick=()=>{

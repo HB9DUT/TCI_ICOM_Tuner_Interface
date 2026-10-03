@@ -27,6 +27,10 @@ constexpr uint32_t FAIL_PULSE_WINDOW_MS = 100;
 constexpr uint16_t TX_SENSORS_INTERVAL_MS = 100;
 constexpr uint32_t STOP_RETRY_MS = 500;
 constexpr uint8_t STOP_MAX_ATTEMPTS = 6;
+// Träger vor START: so lange höchstens auf TRX:false und das TUNE:false-Echo warten
+constexpr uint32_t CARRIER_OFF_TIMEOUT_MS = 1500;
+// Thetis meldet TUNE:false bis zu ~500 ms verspätet, auch nach einem neuen TUNE:true
+constexpr uint32_t TUNE_OFF_ECHO_MS = 1000;
 
 // KEY-Flanken aus dem Interrupt. Der Handler liegt im IRAM und liest das
 // GPIO-Register direkt, damit er auch während Flash-Zugriffen (z.B. Update)
@@ -209,10 +213,24 @@ void Tuner::handle(const Command& cmd, uint32_t now) {
                     tci_.setTune(cmd.trx, false);
                     break;
                 }
+                if (tci_.transmitting(cmd.trx)) {
+                    // Liegt der Träger schon vor START an (Thetis), stimmt der Tuner nicht ab:
+                    // Träger aus, danach START und Träger wieder ein wie über die Weboberfläche.
+                    ESP_LOGI(TAG, "Träger vor START, schalte ihn zuerst aus");
+                    tci_.setTune(cmd.trx, false);
+                    startSession(cmd.trx, cmd.freqHz, now, false);
+                    waitCarrierOff_ = true;
+                    break;
+                }
                 startSession(cmd.trx, cmd.freqHz, now);
                 break;
             }
             if (state_ == State::Idle || cmd.trx != trx_) break;
+            if (state_ != State::Stopping &&
+                (waitCarrierOff_ || static_cast<int32_t>(now - ignoreTuneOffUntilMs_) < 0)) {
+                if (waitCarrierOff_) tuneOffSeen_ = true;
+                break;  // Echo auf das eigene TUNE:false
+            }
             if (state_ == State::Stopping) {
                 finish(pendingResult_, now);
             } else {
@@ -306,7 +324,7 @@ void Tuner::onKeyChange(bool active, uint32_t t) {
             break;
 
         case State::WaitKey:
-            if (active) {
+            if (active && !waitCarrierOff_) {
                 ESP_LOGI(TAG, "stimmt ab (KEY nach %" PRIu32 " ms)", t - startMs_);
                 keyActiveMs_ = t;
                 setState(State::Tuning);
@@ -342,6 +360,19 @@ void Tuner::update(uint32_t now) {
             break;
 
         case State::WaitKey:
+            if (waitCarrierOff_) {
+                // Thetis übernimmt TUNE:true erst nach dem TUNE:false-Echo (~500 ms);
+                // vorher sendet es ohne Tune-Träger.
+                const bool off = tuneOffSeen_ && !tci_.transmitting(trx_);
+                if (!off && elapsed < CARRIER_OFF_TIMEOUT_MS) break;
+                if (!off) ESP_LOGW(TAG, "Träger nicht aus, START trotzdem");
+                waitCarrierOff_ = false;
+                startMs_ = now;
+                ignoreTuneOffUntilMs_ = now + TUNE_OFF_ECHO_MS;
+                setStart(true);
+                tci_.setTune(trx_, true);
+                break;
+            }
             // KEY war schon vor START aktiv (keine Flanke mehr): gilt als Antwort
             if (keyStable_) {
                 onKeyChange(true, now);
@@ -395,16 +426,18 @@ void Tuner::publish(uint32_t now) {
     }
 }
 
-void Tuner::startSession(int trx, uint32_t freqHz, uint32_t now) {
+void Tuner::startSession(int trx, uint32_t freqHz, uint32_t now, bool start) {
     trx_ = trx;
     freqHz_ = freqHz;
     startMs_ = now;
     liveSwr_ = NAN;
     settleSwr_ = NAN;
     pendingResult_ = Result::None;
+    waitCarrierOff_ = tuneOffSeen_ = false;
+    ignoreTuneOffUntilMs_ = now;
     ESP_LOGI(TAG, "Tune-Anforderung TRX %d, %.3f MHz", trx, freqHz_ / 1e6);
     tci_.setTxSensors(true, TX_SENSORS_INTERVAL_MS);
-    setStart(true);
+    setStart(start);
     setState(State::WaitKey);
 }
 

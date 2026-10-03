@@ -35,7 +35,8 @@ public:
     bool ready() const { return ready_.load(); }
     std::string device() const;
     std::string protocol() const;
-    uint32_t vfoHz(int trx) const;  // Frequenz VFO A
+    uint32_t vfoHz(int trx) const;      // Frequenz VFO A
+    bool transmitting(int trx) const;  // laut TRX-Meldung des Servers
 
     void setTune(int trx, bool on);
     void queryTune(int trx);
@@ -81,4 +82,5 @@ private:
     std::string device_;
     std::string protocol_;
     std::atomic<uint32_t> vfo_[MAX_TRX] = {};
+    std::atomic<bool> trx_[MAX_TRX] = {};
 };

@@ -90,6 +90,8 @@ void TciClient::loop(bool networkUp) {
 
 uint32_t TciClient::vfoHz(int trx) const { return (trx >= 0 && trx < MAX_TRX) ? vfo_[trx].load() : 0; }
 
+bool TciClient::transmitting(int trx) const { return trx >= 0 && trx < MAX_TRX && trx_[trx].load(); }
+
 std::string TciClient::device() const {
     std::lock_guard<std::mutex> lock(infoMutex_);
     return device_;
@@ -224,6 +226,7 @@ void TciClient::handleDisconnect() {
         device_.clear();
         protocol_.clear();
     }
+    for (auto& t : trx_) t = false;
     // Nichts Veraltetes nach dem Wiederverbinden senden (z.B. ein TUNE:true)
     {
         std::lock_guard<std::mutex> lock(outMutex_);
@@ -265,6 +268,9 @@ void TciClient::handleCommand(const char* cmd, size_t len) {
     } else if (strcmp(name, "vfo") == 0 && argc >= 3) {
         const int trx = atoi(argv[0]);
         if (trx >= 0 && trx < MAX_TRX && atoi(argv[1]) == 0) vfo_[trx] = strtoul(argv[2], nullptr, 10);
+    } else if (strcmp(name, "trx") == 0 && argc >= 2) {
+        const int trx = atoi(argv[0]);
+        if (trx >= 0 && trx < MAX_TRX) trx_[trx] = parseBool(argv[1]);
     } else if (strcmp(name, "ready") == 0) {
         ESP_LOGI(TAG, "bereit (%s, %s)", device().c_str(), protocol().c_str());
         readyAtMs_ = millis();

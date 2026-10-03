@@ -121,7 +121,7 @@ private:
     void update(uint32_t now);
     void publish(uint32_t now);
     bool claimStart(int trx, const char* source);
-    void startSession(int trx, uint32_t freqHz, uint32_t now);
+    void startSession(int trx, uint32_t freqHz, uint32_t now, bool start = true);
     void requestStop(Result result, uint32_t now);
     void sendStop(uint32_t now);
     void finish(Result result, uint32_t now);
@@ -146,6 +146,10 @@ private:
     uint32_t tuneEndMs_ = 0;
     uint32_t stopSentMs_ = 0;
     uint8_t stopAttempts_ = 0;
+    // Träger war vor START schon an (z.B. Thetis): erst aus, dann START und Träger wieder ein
+    bool waitCarrierOff_ = false;
+    bool tuneOffSeen_ = false;
+    uint32_t ignoreTuneOffUntilMs_ = 0;  // verspätete TUNE:false-Echos bis dahin ignorieren
     float liveSwr_ = NAN;
     float settleSwr_ = NAN;
 

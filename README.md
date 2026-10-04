@@ -8,9 +8,11 @@ Towards the tuner, the interface takes the place of an ICOM radio. This makes it
 
 - **Triggered by TUNE in SDR-Software:** Tuning starts automatically, and the connection re-establishes itself within 5 s after an interruption, e.g. when the SDR software is restarted.
 - **AH-4 sequence:** Holds START until the tuner asserts KEY, then detects the end of tuning as well as the tuner's failure signal.
-- **Safety:** The tune carrier is switched off after an adjustable timeout at the latest, even if the tuner does not respond. The stop command is repeated until ExpertSDR3 confirms it.
-- **SWR check:** After tuning, the SWR is measured via the TX sensors of ExpertSDR3 and checked against a limit.
+- **Safety:** The tune carrier is switched off after an adjustable timeout at the latest, even if the tuner does not respond. The stop command is repeated until the SDR software confirms it. See [Safety](#safety).
+- **SWR check:** After tuning, the SWR is measured via the TX sensors of the SDR software and checked against a limit.
 - **Web interface:** Status, the last 10 tuning runs with frequency, result, SWR and duration, and all settings. Optional password protection.
+- **Tune button in the web interface:** Starts a tune from the browser (the interface sets TUNE via TCI itself) and can stop it again.
+- **Console via USB and telnet:** Configuration and diagnostics without the web interface, including live log output over telnet.
 - **Setup without programming:** Without Wi-Fi, the interface opens an access point with a configuration page (captive portal). Available Wi-Fi networks can be selected from a list.
 - **Status LED:** Shows Wi-Fi, TCI connection, tuning in progress and errors.
 - **Firmware update via the web interface:** Automatically falls back to the previous firmware if the new one does not start.
@@ -21,7 +23,7 @@ The web interface is available in English and German and follows the browser lan
 ## Requirements
 
 - ESP32 board with 4 MB flash (e.g. ESP32-DevKitC, PlatformIO board `esp32dev`)
-- SDR with ExpertSDR3 and the TCI server enabled (*Options → TCI*)
+- SDR software with the TCI server enabled, e.g. ExpertSDR3 (*Options → TCI*), Thetis, deskHPSDR or AetherSDR (see [SDR software](#sdr-software))
 - Tuner with an ICOM AH-4 interface
 - Interface circuit (see [Hardware](#hardware)) and a 13.8 V supply
 - Chrome or Edge for the [web installer](https://hb9dut.github.io/TCI_ICOM_Tuner_Interface/), or [PlatformIO](https://platformio.org/) to build from source (ESP-IDF 5.4)
@@ -29,14 +31,14 @@ The web interface is available in English and German and follows the browser lan
 ## Tuning sequence
 
 ```
-ExpertSDR3            Interface (ESP32)                  Tuner
+SDR software          Interface (ESP32)                  Tuner
 TUNE:0,true;  ──────▶ START active ────────────────────▶ reset, ready after approx. 300 ms
                       KEY active             ◀─────────── KEY (tuning, typ. 1–3 s)
                       START released (250 ms after KEY)
                       KEY released           ◀─────────── done
                         KEY active again < 100 ms later ◀─ failure (20 ms gap)
                       measure SWR (300 ms, TX_SENSORS)
-TUNE:0,false; ◀────── stop, repeated until ExpertSDR3 confirms
+TUNE:0,false; ◀────── stop, repeated until the SDR software confirms
 ```
 
 The tune carrier is already on as soon as TUNE is pressed. While tuning, the AH-4 checks that the power is between 5 and 15 W and aborts otherwise. Set the tune power in SDR-Software to about 10 W. For other tuners, use the limits from their manual.
@@ -48,8 +50,8 @@ The tune carrier is already on as soon as TUNE is pressed. While tuning, the AH-
 | Tuner reports failure | Tuner briefly asserted KEY again after releasing it (no match found) |
 | Tuner not responding | KEY did not become active within the "KEY wait time" after START |
 | Timeout | Tuner not done within the "Tune timeout" |
-| Aborted | TUNE ended in ExpertSDR3 or TCI connection lost |
-| Stop not confirmed | ExpertSDR3 did not confirm `TUNE:false` after 6 attempts |
+| Aborted | TUNE ended in the SDR software, stopped via web interface or console, or TCI connection lost |
+| Stop not confirmed | The SDR software did not confirm `TUNE:false` after 6 attempts |
 
 ## Hardware
 
@@ -83,7 +85,7 @@ The pin assignment is in [src/hw_config.h](src/hw_config.h).
 ### Testing without a tuner
 
 - Connect a push button between KEY and GND.
-- **Success:** Press TUNE in ExpertSDR3, press the button within 2 s (the tuner is "tuning") and release it (done). Result: "OK".
+- **Success:** Press TUNE in the SDR software, press the button within 2 s (the tuner is "tuning") and release it (done). Result: "OK".
 - **Failure:** After releasing, briefly press again within 100 ms. Result: "Tuner reports failure".
 - **Making START visible:** An LED with a series resistor from +13.8 V to START lights up while START is active.
 
@@ -132,11 +134,13 @@ The web installer can also be used for updates. Settings are kept unless you cho
 | Tune timeout | 20000 ms | From start; then the carrier is switched off |
 | SWR measuring time | 300 ms | Keep the carrier on this long after tuning to measure the SWR (0 = no measurement) |
 | Max. SWR | 2.0 | Limit for the SWR check (0 = no check) |
-| Web interface password | – | Protects the web interface (user `admin`) |
+| Access password | – | Web interface (user `admin`) and telnet; protects tune, settings and update. The status page stays readable. |
 
 Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a restart.
 
 ### JSON API
+
+Requests that change something (all `POST` and `/api/scan`) need the header `X-TCI-Tuner: 1`, e.g. `curl -X POST -H 'X-TCI-Tuner: 1' -d on=1 http://tci-tuner.local/api/tune`. Other websites open in the browser cannot set it, so they cannot key the transmitter or change settings behind your back (the browser would send a stored password along).
 
 | Method | Path | Content |
 |---|---|---|
@@ -144,8 +148,50 @@ Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a re
 | GET | `/api/settings` | Settings (without passwords) |
 | POST | `/api/settings` | Change settings (`application/x-www-form-urlencoded`) |
 | POST | `/api/reboot` | Restart |
+| POST | `/api/tune` | Start (`on=1`) or stop (`on=0`) a tune |
 | GET | `/api/scan` | Visible Wi-Fi networks (takes about 3 s, blocked while tuning) |
 | POST | `/api/update` | Firmware update, body is the `firmware.bin` (`application/octet-stream`) |
+
+### SDR software
+
+| Software | TUNE in the SDR starts the tuner | Interface can stop the tune | Tune button |
+|---|---|---|---|
+| ExpertSDR3 | yes | yes | yes |
+| Thetis | yes (carrier is turned off until START, see below) | yes | yes |
+| deskHPSDR | yes | only if the tune was started via TCI | yes |
+| AetherSDR | no (tune changes are not reported to TCI clients) | yes | yes |
+
+deskHPSDR ignores a TCI stop request for a tune that was started in deskHPSDR itself. With the tune button in the web interface, the interface starts the tune and can stop it again. A fix is proposed in [deskhpsdr#241](https://github.com/dl1bz/deskhpsdr/pull/241).
+
+Thetis keys the carrier about 120 ms before it reports `TUNE:true`. With the carrier already present at START, the AH-4 only acknowledges START and does not tune. If the SDR software has reported `TRX:true` before `TUNE:true`, the interface therefore first turns the tune off, waits for `TRX:false` and the `TUNE:false` echo (max. 1.5 s), and then sets START together with `TUNE:true`, as with the tune button. Thetis reports `TUNE:false` up to 500 ms late; sending `TUNE:true` earlier makes Thetis transmit without the tune carrier. For 1 s after that, a `TUNE:false` is ignored as a late echo while the carrier is still reported on; stopping the tune in Thetis (`TRX:false` first) ends it as usual. SDR software that reports `TRX:true` only after `TUNE:true` is not affected. The "Emulate ExpertSDR3 protocol" option in Thetis does not change this behaviour.
+
+### Console (USB and telnet)
+
+The same commands are available on the USB serial port (115200 baud, e.g. `pio device monitor`) and via telnet on port 23 (`telnet tci-tuner.local`, one session at a time). `help` lists them:
+
+| Command | Function |
+|---|---|
+| `show` | Configuration and state, minimum free stack per task |
+| `history` | Last tuning runs |
+| `scan` | Visible Wi-Fi networks |
+| `ssid`, `pass`, `hostname` | Wi-Fi settings |
+| `tci <host> [port]` | TCI server |
+| `trx`, `keyactive`, `starthold`, `keywait`, `timeout`, `swrsettle`, `swrmax` | Tuner settings (as in the web interface) |
+| `webpass` | Web and telnet password; over telnet the current password is required |
+| `save` / `discard` | Store and apply the changes / drop them |
+| `tune` / `stop` | Start / abort a tune |
+| `reboot`, `factory yes` | Restart / erase all settings |
+| `log on` / `log off` | Telnet only: show the log output in the session |
+| `quit` | Telnet only: close the session |
+
+Telnet is unencrypted. If a web interface password is set, telnet asks for it before accepting commands.
+
+### Safety
+
+The tuner sequence runs in its own high-priority task and owns the START line; the web interface, console and TCI connection only send it commands. KEY is captured by interrupt with a timestamp, so even the 20 ms failure gap is detected while the web interface or a flash write is busy. TCI commands are sent from a separate task, so a stalled network does not delay the tuner.
+
+- **No restart in the middle of a tune:** Restart, firmware update and Wi-Fi scan lock new tunes. A tune requested meanwhile is answered with `TUNE:false`; a running one is stopped and the restart waits until it has ended.
+- **After a restart:** If the SDR software reports an active tune while the connection is being established (e.g. the interface restarted during a tune), the interface switches the carrier off instead of starting a tuning run.
 
 ## Status LED
 
@@ -193,7 +239,7 @@ With password protection, add `-u admin:<password>`.
 
 This project is provided "as is", without warranty of any kind. Building and using it is entirely at your own risk.
 
-- **You are responsible for your station.** The interface keys a transmitter via ExpertSDR3. Make sure your setup, tune power and antenna are suitable, and that you operate within the terms of your amateur radio licence and local regulations.
+- **You are responsible for your station.** The interface keys a transmitter via the SDR software (TCI). Make sure your setup, tune power and antenna are suitable, and that you operate within the terms of your amateur radio licence and local regulations.
 - **Check the hardware yourself.** The interface circuit is connected to a 13.8 V supply, a tuner and RF equipment. Wiring errors can damage the ESP32, the tuner, the radio or the power supply. Verify the circuit, the pinout of your tuner and all levels before connecting anything.
 - **No guarantee of correct function.** Timeouts and checks reduce the risk of an unattended carrier or a bad match, but they cannot rule out software or hardware faults. Do not leave the station unattended while tuning.
 - The author accepts no liability for damage to equipment, injury, interference or any other consequences arising from the use of this project.

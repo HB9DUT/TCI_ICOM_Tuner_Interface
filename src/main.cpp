@@ -1,10 +1,16 @@
 // TCI to ICOM Tuner Interface – steuert einen Tuner mit ICOM-AH-4-Schnittstelle
-// (z.B. ICOM AH-4, Stockcorner) anhand der TUNE-Befehle von ExpertSDR3 (TCI).
+// (z.B. ICOM AH-4, Stockcorner) anhand der TUNE-Befehle eines SDR-Programms (TCI).
 //
-// Die Anwendungslogik läuft in einer Hauptschleife (5-ms-Takt). Der WebSocket-Client
-// liefert seine Ereignisse über eine Queue; der HTTP-Server sperrt appMutex().
+// Tasks:
+//   tuner  (Priorität 10, Core 1) Zustandsmaschine, START/KEY; Befehle nur über Queue
+//   tci    (Priorität 6)          Verbindung, Empfang und Senden über TCI
+//   httpd  (Priorität 5)          Weboberfläche; sperrt appMutex() für Einstellungen
+//   console, telnet (Priorität 2) Befehlskonsole über UART0 und Telnet
+//   main   (Priorität 1)          WLAN, Status-LED, Neustart
+// Die Weboberfläche kann den Tuner damit nicht aufhalten.
 
 #include "app_util.h"
+#include "console.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -27,13 +33,14 @@ constexpr uint32_t ERROR_DISPLAY_MS = 30000;
 
 Settings settings;
 TciClient tci;
-Tuner tuner(settings, tci);
+Tuner tuner(tci);
 StatusLed led;
 WebUi web(settings, tci, tuner);
 
 StatusLed::Pattern ledPattern() {
     if (tuner.busy()) return StatusLed::Pattern::Tuning;
-    if (tuner.lastFailed() && millis() - tuner.lastFinishedMs() < ERROR_DISPLAY_MS) return StatusLed::Pattern::Error;
+    const Tuner::Snapshot t = tuner.snapshot();
+    if (t.lastFailed && millis() - t.lastFinishedMs < ERROR_DISPLAY_MS) return StatusLed::Pattern::Error;
     if (tci.ready()) return StatusLed::Pattern::Ready;
     if (net::staConnected()) return StatusLed::Pattern::WifiOnly;
     if (net::apActive()) return StatusLed::Pattern::AccessPoint;
@@ -64,7 +71,7 @@ void confirmFirmware() {
 }  // namespace
 
 extern "C" void app_main() {
-    tuner.begin();  // START-Leitung sofort in den inaktiven Zustand
+    tuner.initOutput();  // START-Leitung sofort in den inaktiven Zustand
     led.begin();
 
     ESP_LOGI(TAG, "TCI to ICOM Tuner Interface, Firmware %s", esp_app_get_description()->version);
@@ -72,25 +79,35 @@ extern "C" void app_main() {
     settings.load();
 
     tci.onReady = [](bool ready) { tuner.onTciReady(ready); };
-    tci.onTune = [](int trx, bool on) { tuner.onTuneEvent(trx, on); };
+    tci.onTune = [](int trx, bool on, uint32_t freqHz, bool atConnect, bool carrierOn) {
+        tuner.onTuneEvent(trx, on, freqHz, atConnect, carrierOn);
+    };
     tci.onTxSensors = [](int trx, float swr) { tuner.onTxSensors(trx, swr); };
+    tuner.start(Tuner::Config::from(settings));
 
     net::begin(settings);
     tci.configure(settings.tciHost, settings.tciPort);
+    tci.startTask();
     if (web.begin()) confirmFirmware();
+    console::begin(settings, tci, tuner, web);
 
+    bool rebootWaitLogged = false;
     for (;;) {
         {
             std::lock_guard<std::recursive_mutex> lock(appMutex());
             net::loop();
-            tci.loop(net::staConnected());
-            tuner.update();
-            led.set(ledPattern());
-            led.update();
         }
+        led.set(ledPattern());
+        led.update();
+        // Neustart erst, wenn der Tuner fertig ist: sonst bliebe der Träger im
+        // SDR-Programm an, weil niemand mehr TUNE:false schickt.
         if (web.rebootDue()) {
-            ESP_LOGI(TAG, "Neustart");
-            esp_restart();
+            if (!tuner.busy()) {
+                ESP_LOGI(TAG, "Neustart");
+                esp_restart();
+            }
+            if (!rebootWaitLogged) ESP_LOGI(TAG, "Neustart wartet auf das Ende der Abstimmung");
+            rebootWaitLogged = true;
         }
         vTaskDelay(pdMS_TO_TICKS(LOOP_PERIOD_MS));
     }

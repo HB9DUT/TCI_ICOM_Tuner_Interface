@@ -25,3 +25,8 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=6144
 # Initialisierungsblock. Der Transport liest beides in diesen Puffer und bricht ab,
 # wenn er voll ist; er muss daher grösser als das TCP-Empfangsfenster (5760) sein.
 CONFIG_WS_BUFFER_SIZE=8192
+
+# Sockets: HTTP-Server (7 Verbindungen + 3 intern), TCI-WebSocket, mDNS,
+# Telnet (Listen + Sitzung) und Captive-DNS. Mit dem Standardwert 10 wies
+# der ESP32 Verbindungen ab, sobald ein Browser mehrere offen hielt.
+CONFIG_LWIP_MAX_SOCKETS=16

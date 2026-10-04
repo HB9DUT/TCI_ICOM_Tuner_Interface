@@ -197,7 +197,7 @@ pio device monitor
 
 On the first build, PlatformIO downloads ESP-IDF and the components listed in [src/idf_component.yml](src/idf_component.yml) (`esp_websocket_client`, `mdns`). The exact versions are in [dependencies.lock](dependencies.lock).
 
-The version number comes from the Git tag (`git describe`). Builds between releases show e.g. `2.4.0-3-gabc1234`; after a new commit, run `pio run -t clean` so the number is updated.
+The version number comes from the Git tag (`git describe`). Builds between releases show e.g. `2.4.0-3-gabc1234`. With PlatformIO, `version.py` determines the number on every build, so no clean build is needed after a new commit.
 
 A self-built `.pio/build/esp32dev/firmware.bin` can be installed via the web interface or with curl:
 

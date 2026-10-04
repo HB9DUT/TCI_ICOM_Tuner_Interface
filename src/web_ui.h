@@ -16,10 +16,6 @@ public:
     bool begin();
     bool rebootDue() const;
 
-    // Auch für die Konsole
-    bool applySettings(Settings n);
-    void scheduleReboot();
-
 private:
     static esp_err_t handleIndex(httpd_req_t* req);
     static esp_err_t handleStatus(httpd_req_t* req);
@@ -32,6 +28,8 @@ private:
     static esp_err_t handleNotFound(httpd_req_t* req, httpd_err_code_t err);
 
     bool authorized(httpd_req_t* req);
+    bool applySettings(Settings n);
+    void scheduleReboot();
 
     Settings& cfg_;
     TciClient& tci_;

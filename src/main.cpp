@@ -5,12 +5,10 @@
 //   tuner  (Priorität 10, Core 1) Zustandsmaschine, START/KEY; Befehle nur über Queue
 //   tci    (Priorität 6)          Verbindung, Empfang und Senden über TCI
 //   httpd  (Priorität 5)          Weboberfläche; sperrt appMutex() für Einstellungen
-//   console, telnet (Priorität 2) Befehlskonsole über UART0 und Telnet
 //   main   (Priorität 1)          WLAN, Status-LED, Neustart
 // Die Weboberfläche kann den Tuner damit nicht aufhalten.
 
 #include "app_util.h"
-#include "console.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -89,7 +87,6 @@ extern "C" void app_main() {
     tci.configure(settings.tciHost, settings.tciPort);
     tci.startTask();
     if (web.begin()) confirmFirmware();
-    console::begin(settings, tci, tuner, web);
 
     bool rebootWaitLogged = false;
     for (;;) {

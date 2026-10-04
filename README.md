@@ -12,7 +12,6 @@ Towards the tuner, the interface takes the place of an ICOM radio. This makes it
 - **SWR check:** After tuning, the SWR is measured via the TX sensors of the SDR software and checked against a limit.
 - **Web interface:** Status, the last 10 tuning runs with frequency, result, SWR and duration, and all settings. Optional password protection.
 - **Tune button in the web interface:** Starts a tune from the browser (the interface sets TUNE via TCI itself) and can stop it again.
-- **Console via USB and telnet:** Configuration and diagnostics without the web interface, including live log output over telnet.
 - **Setup without programming:** Without Wi-Fi, the interface opens an access point with a configuration page (captive portal). Available Wi-Fi networks can be selected from a list.
 - **Status LED:** Shows Wi-Fi, TCI connection, tuning in progress and errors.
 - **Firmware update via the web interface:** Automatically falls back to the previous firmware if the new one does not start.
@@ -50,7 +49,7 @@ The tune carrier is already on as soon as TUNE is pressed. While tuning, the AH-
 | Tuner reports failure | Tuner briefly asserted KEY again after releasing it (no match found) |
 | Tuner not responding | KEY did not become active within the "KEY wait time" after START |
 | Timeout | Tuner not done within the "Tune timeout" |
-| Aborted | TUNE ended in the SDR software, stopped via web interface or console, or TCI connection lost |
+| Aborted | TUNE ended in the SDR software, stopped via web interface, or TCI connection lost |
 | Stop not confirmed | The SDR software did not confirm `TUNE:false` after 6 attempts |
 
 ## Hardware
@@ -134,7 +133,7 @@ The web installer can also be used for updates. Settings are kept unless you cho
 | Tune timeout | 20000 ms | From start; then the carrier is switched off |
 | SWR measuring time | 300 ms | Keep the carrier on this long after tuning to measure the SWR (0 = no measurement) |
 | Max. SWR | 2.0 | Limit for the SWR check (0 = no check) |
-| Access password | – | Web interface (user `admin`) and telnet; protects tune, settings and update. The status page stays readable. |
+| Access password | – | Web interface (user `admin`); protects tune, settings and update. The status page stays readable. |
 
 Tuner settings take effect immediately. Changing Wi-Fi or hostname triggers a restart.
 
@@ -165,30 +164,9 @@ deskHPSDR ignores a TCI stop request for a tune that was started in deskHPSDR it
 
 Thetis keys the carrier about 120 ms before it reports `TUNE:true`. With the carrier already present at START, the AH-4 only acknowledges START and does not tune. If the SDR software has reported `TRX:true` before `TUNE:true`, the interface therefore first turns the tune off, waits for `TRX:false` and the `TUNE:false` echo (max. 1.5 s), and then sets START together with `TUNE:true`, as with the tune button. Thetis reports `TUNE:false` up to 500 ms late; sending `TUNE:true` earlier makes Thetis transmit without the tune carrier. For 1 s after that, a `TUNE:false` is ignored as a late echo while the carrier is still reported on; stopping the tune in Thetis (`TRX:false` first) ends it as usual. SDR software that reports `TRX:true` only after `TUNE:true` is not affected. The "Emulate ExpertSDR3 protocol" option in Thetis does not change this behaviour.
 
-### Console (USB and telnet)
-
-The same commands are available on the USB serial port (115200 baud, e.g. `pio device monitor`) and via telnet on port 23 (`telnet tci-tuner.local`, one session at a time). `help` lists them:
-
-| Command | Function |
-|---|---|
-| `show` | Configuration and state, minimum free stack per task |
-| `history` | Last tuning runs |
-| `scan` | Visible Wi-Fi networks |
-| `ssid`, `pass`, `hostname` | Wi-Fi settings |
-| `tci <host> [port]` | TCI server |
-| `trx`, `keyactive`, `starthold`, `keywait`, `timeout`, `swrsettle`, `swrmax` | Tuner settings (as in the web interface) |
-| `webpass` | Web and telnet password; over telnet the current password is required |
-| `save` / `discard` | Store and apply the changes / drop them |
-| `tune` / `stop` | Start / abort a tune |
-| `reboot`, `factory yes` | Restart / erase all settings |
-| `log on` / `log off` | Telnet only: show the log output in the session |
-| `quit` | Telnet only: close the session |
-
-Telnet is unencrypted. If a web interface password is set, telnet asks for it before accepting commands.
-
 ### Safety
 
-The tuner sequence runs in its own high-priority task and owns the START line; the web interface, console and TCI connection only send it commands. KEY is captured by interrupt with a timestamp, so even the 20 ms failure gap is detected while the web interface or a flash write is busy. TCI commands are sent from a separate task, so a stalled network does not delay the tuner.
+The tuner sequence runs in its own high-priority task and owns the START line; the web interface and TCI connection only send it commands. KEY is captured by interrupt with a timestamp, so even the 20 ms failure gap is detected while the web interface or a flash write is busy. TCI commands are sent from a separate task, so a stalled network does not delay the tuner.
 
 - **No restart in the middle of a tune:** Restart, firmware update and Wi-Fi scan lock new tunes. A tune requested meanwhile is answered with `TUNE:false`; a running one is stopped and the restart waits until it has ended.
 - **After a restart:** If the SDR software reports an active tune while the connection is being established (e.g. the interface restarted during a tune), the interface switches the carrier off instead of starting a tuning run.

@@ -226,7 +226,7 @@ void WebUi::scheduleReboot() {
     rebootAtMs_ = (millis() + REBOOT_DELAY_MS) | 1;
 }
 
-// Speichert die Einstellungen und setzt sie um (auch für die Konsole).
+// Speichert die Einstellungen und setzt sie um.
 // Liefert true, wenn dafür ein Neustart nötig ist; der ist dann bereits geplant.
 // Aufruf mit gesperrtem appMutex().
 bool WebUi::applySettings(Settings n) {

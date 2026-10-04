@@ -1,7 +1,6 @@
 idf_component_register(
     SRCS
         main.cpp
-        console.cpp
         settings.cpp
         tci_client.cpp
         tuner.cpp

@@ -294,7 +294,10 @@ void TciClient::handleCommand(const char* cmd, size_t len) {
         if (trx >= 0 && trx < MAX_TRX && atoi(argv[1]) == 0) vfo_[trx] = strtoul(argv[2], nullptr, 10);
     } else if (strcmp(name, "trx") == 0 && argc >= 2) {
         const int trx = atoi(argv[0]);
-        if (trx >= 0 && trx < MAX_TRX) trx_[trx] = parseBool(argv[1]);
+        if (trx >= 0 && trx < MAX_TRX) {
+            trx_[trx] = parseBool(argv[1]);
+            if (onTrx) onTrx(trx, trx_[trx]);
+        }
     } else if (strcmp(name, "ready") == 0) {
         ESP_LOGI(TAG, "bereit (%s, %s)", device().c_str(), protocol().c_str());
         readyAtMs_ = millis();

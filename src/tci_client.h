@@ -26,6 +26,8 @@ public:
     // carrierOn: beim Eintreffen dieses TUNE war laut TRX-Meldung gesendet worden
     std::function<void(int trx, bool on, uint32_t freqHz, bool atConnect, bool carrierOn)> onTune;
     std::function<void(int trx, float swr)> onTxSensors;
+    // TRX-Meldung (Sendezustand); transmitting() liefert denselben Wert
+    std::function<void(int trx, bool on)> onTrx;
 
     // Server festlegen; wirkt im nächsten Durchlauf. Leerer Host = keine Verbindung.
     void configure(const std::string& host, uint16_t port);

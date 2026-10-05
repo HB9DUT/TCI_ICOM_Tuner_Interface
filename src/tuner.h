@@ -82,6 +82,7 @@ public:
     void applyConfig(const Config& cfg);
     void onTuneEvent(int trx, bool on, uint32_t freqHz, bool atConnect, bool carrierOn);
     void onTxSensors(int trx, float swr);
+    void onTrxEvent(int trx, bool on);
     void onTciReady(bool ready);
 
     // Tune über die Weboberfläche. Das Modul setzt TUNE dann selbst und ist bei
@@ -102,7 +103,7 @@ public:
 
 private:
     struct Command {
-        enum class Type : uint8_t { Config, Tune, TxSensors, TciReady, WebStart, WebStop } type;
+        enum class Type : uint8_t { Config, Tune, TxSensors, Trx, TciReady, WebStart, WebStop } type;
         int trx;
         bool on;
         bool atConnect;
@@ -149,6 +150,7 @@ private:
     uint8_t stopAttempts_ = 0;
     // Träger war vor START schon an (z.B. Thetis): erst aus, dann START und Träger wieder ein
     bool waitCarrierOff_ = false;
+    bool sdrStarted_ = false;  // Sitzung durch TUNE:true des SDR-Programms, START schon aktiv
     bool tuneOffSeen_ = false;
     uint32_t ignoreTuneOffUntilMs_ = 0;  // verspätete TUNE:false-Echos bis dahin ignorieren
     float liveSwr_ = NAN;

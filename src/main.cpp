@@ -81,6 +81,7 @@ extern "C" void app_main() {
         tuner.onTuneEvent(trx, on, freqHz, atConnect, carrierOn);
     };
     tci.onTxSensors = [](int trx, float swr) { tuner.onTxSensors(trx, swr); };
+    tci.onTrx = [](int trx, bool on) { tuner.onTrxEvent(trx, on); };
     tuner.start(Tuner::Config::from(settings));
 
     net::begin(settings);

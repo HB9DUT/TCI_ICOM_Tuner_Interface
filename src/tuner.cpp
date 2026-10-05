@@ -31,6 +31,11 @@ constexpr uint8_t STOP_MAX_ATTEMPTS = 6;
 constexpr uint32_t CARRIER_OFF_TIMEOUT_MS = 1500;
 // Thetis meldet TUNE:false bis zu ~500 ms verspätet, auch nach einem neuen TUNE:true
 constexpr uint32_t TUNE_OFF_ECHO_MS = 1000;
+// TRX:true so kurz nach TUNE:true: der Träger war schon an, als START kam
+constexpr uint32_t CARRIER_RACE_MS = 50;
+// Träger vor START: TUNE:true frühestens so lange nach dem eigenen TUNE:false
+// (ExpertSDR3 sperrt einen Parameter bis 200 ms nach einer Änderung)
+constexpr uint32_t CARRIER_RESTART_MIN_MS = 250;
 
 // KEY-Flanken aus dem Interrupt. Der Handler liegt im IRAM und liest das
 // GPIO-Register direkt, damit er auch während Flash-Zugriffen (z.B. Update)
@@ -146,6 +151,14 @@ void Tuner::onTxSensors(int trx, float swr) {
     post(c);
 }
 
+void Tuner::onTrxEvent(int trx, bool on) {
+    Command c = {};
+    c.type = Command::Type::Trx;
+    c.trx = trx;
+    c.on = on;
+    post(c);
+}
+
 void Tuner::onTciReady(bool ready) {
     Command c = {};
     c.type = Command::Type::TciReady;
@@ -224,6 +237,7 @@ void Tuner::handle(const Command& cmd, uint32_t now) {
                     break;
                 }
                 startSession(cmd.trx, cmd.freqHz, now);
+                sdrStarted_ = true;
                 break;
             }
             if (state_ == State::Idle || cmd.trx != trx_) break;
@@ -243,6 +257,21 @@ void Tuner::handle(const Command& cmd, uint32_t now) {
                 ESP_LOGI(TAG, "Tune im SDR-Programm beendet");
                 finish(Result::Aborted, now);
             }
+            break;
+
+        case Command::Type::Trx:
+            // Meldet das SDR-Programm den Träger erst unmittelbar nach TUNE:true, lag er
+            // bei START meist schon an und der Tuner quittiert nur: wie bei Thetis zuerst
+            // aus, dann START und Träger wieder ein.
+            if (!cmd.on || !sdrStarted_ || state_ != State::WaitKey || cmd.trx != trx_) break;
+            sdrStarted_ = false;
+            if (keyStable_ || now - startMs_ > CARRIER_RACE_MS) break;
+            ESP_LOGI(TAG, "Träger kurz nach TUNE gemeldet, schalte ihn zuerst aus");
+            setStart(false);
+            tci_.setTune(trx_, false);
+            startMs_ = now;
+            tuneOffSeen_ = false;
+            waitCarrierOff_ = true;
             break;
 
         case Command::Type::TxSensors:
@@ -369,7 +398,8 @@ void Tuner::update(uint32_t now) {
             if (waitCarrierOff_) {
                 // Thetis übernimmt TUNE:true erst nach dem TUNE:false-Echo (~500 ms);
                 // vorher sendet es ohne Tune-Träger.
-                const bool off = tuneOffSeen_ && !tci_.transmitting(trx_);
+                const bool off =
+                    tuneOffSeen_ && !tci_.transmitting(trx_) && elapsed >= CARRIER_RESTART_MIN_MS;
                 if (!off && elapsed < CARRIER_OFF_TIMEOUT_MS) break;
                 if (!off) ESP_LOGW(TAG, "Träger nicht aus, START trotzdem");
                 waitCarrierOff_ = false;
@@ -440,6 +470,7 @@ void Tuner::startSession(int trx, uint32_t freqHz, uint32_t now, bool start) {
     settleSwr_ = NAN;
     pendingResult_ = Result::None;
     waitCarrierOff_ = tuneOffSeen_ = false;
+    sdrStarted_ = false;
     ignoreTuneOffUntilMs_ = now;
     ESP_LOGI(TAG, "Tune-Anforderung TRX %d, %.3f MHz", trx, freqHz_ / 1e6);
     tci_.setTxSensors(true, TX_SENSORS_INTERVAL_MS);
